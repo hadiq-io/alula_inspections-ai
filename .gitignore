@@ -8,7 +8,7 @@ env/
 venv/
 .venv/
 
-# Environment files - IMPORTANT!
+# Environment files - CRITICAL!
 .env
 *.env
 .env.local
