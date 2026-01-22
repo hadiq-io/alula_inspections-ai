@@ -1,0 +1,10 @@
+ADD THESE TWO LINES TO YOUR ChatMessage INTERFACE:
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  chart_data?: any;
+  chart_type?: string;
+  tiles?: any[];      // ADD THIS
+  type?: string;      // ADD THIS
+}
