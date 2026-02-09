@@ -1,28 +1,66 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Loader2, BarChart3, TrendingUp, MapPin, Users, X } from "lucide-react";
-import ChatMessage from "./ChatMessage";
-import AnalysisDashboard from "./AnalysisDashboard";
 
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<any[]>([]);
+// API Base URL - uses environment variable or relative path for same-origin
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+import { Send, Loader2, BarChart3, TrendingUp, Brain, Zap, RotateCcw, Globe, FileText, MapPin, Users, AlertTriangle, Calendar, PieChart, Target, Shield, Activity } from "lucide-react";
+import ChatMessage from "./ChatMessage";
+import { LanguageToggle, LanguageProvider, useLanguage } from "./LanguageToggle";
+
+// Message interface with chart support
+interface Recommendation {
+  text: string;
+  text_en: string;
+  text_ar: string;
+  icon: string;
+}
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  content_en?: string;  // Store English version
+  content_ar?: string;  // Store Arabic version
+  tiles?: any[];
+  type?: string;
+  chartData?: Record<string, any>[];
+  chartConfig?: {
+    type: "bar" | "line" | "pie" | "composed" | "area" | "none";
+    xKey?: string;
+    yKeys?: string[];
+    title?: string;
+    title_ar?: string;
+  };
+  recommendations?: Recommendation[];
+}
+
+function ChatInterfaceInner() {
+  const { language, isRTL, t } = useLanguage();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [activePanel, setActivePanel] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [useV2Api, setUseV2Api] = useState(true); // Toggle between V1 and V2 API
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const quickPrompts = [
-    { icon: BarChart3, text: "Show me all KPIs", prompt: "Show me all KPIs" },
-    { icon: TrendingUp, text: "ML Models", prompt: "Show me all ML models" },
-    { icon: MapPin, text: "Location Analysis", prompt: "Show me location risk analysis" },
-    { icon: Users, text: "Inspector Stats", prompt: "Show me inspector performance" },
-  ];
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, []);
 
+  // Scroll on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // Handle content update during typewriter effect
+  const handleContentUpdate = useCallback(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   const handleSend = async (messageText?: string) => {
     const msg = messageText || input;
@@ -33,30 +71,74 @@ export default function ChatInterface() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
-      });
+      // Use V2 API for bilingual support with charts
+      if (useV2Api) {
+        const res = await fetch(`${API_BASE_URL}/api/v2/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            message: msg,
+            session_id: sessionId,
+            language: language
+          }),
+        });
 
-      const data = await res.json();
+        const data = await res.json();
+        
+        // Store session ID for follow-up context
+        if (data.session_id) {
+          setSessionId(data.session_id);
+        }
 
-      if (data.type === "kpi_tiles" || data.type === "prediction_tiles") {
+        // Get the appropriate response based on language
+        const responseText = language === "ar" && data.response_ar 
+          ? data.response_ar 
+          : data.response;
+
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "", tiles: data.tiles, type: data.type },
+          { 
+            role: "assistant", 
+            content: responseText || "I couldn't generate a response.",
+            content_en: data.response_en || data.response || "",
+            content_ar: data.response_ar || "",
+            chartData: data.data,
+            chartConfig: data.chart_config,
+            recommendations: data.recommendations
+          },
         ]);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: data.message },
-        ]);
+        // Fallback to V1 API
+        const res = await fetch(`${API_BASE_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg }),
+        });
+
+        const data = await res.json();
+
+        if (data.type === "kpi_tiles" || data.type === "prediction_tiles") {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "", tiles: data.tiles, type: data.type },
+          ]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: data.message },
+          ]);
+        }
       }
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Sorry, I encountered an error." },
+        { 
+          role: "assistant", 
+          content: language === "ar" 
+            ? "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى." 
+            : "Sorry, I encountered an error. Please try again."
+        },
       ]);
     } finally {
       setIsLoading(false);
@@ -64,16 +146,22 @@ export default function ChatInterface() {
   };
 
   const handleTileClick = (tileId: string) => {
-    setActivePanel(tileId);
+    // Tiles are hidden in simplified UI
+    console.log('Tile clicked:', tileId);
   };
 
   const handleClear = async () => {
-    await fetch("http://localhost:8000/api/clear", { method: "POST" });
+    await fetch(`${API_BASE_URL}/api/clear`, { method: "POST" });
+    // Also clear V2 session
+    if (sessionId) {
+      await fetch(`${API_BASE_URL}/api/v2/session/${sessionId}`, { method: "DELETE" });
+      setSessionId(null);
+    }
     setMessages([]);
   };
 
   return (
-    <div className="relative flex h-screen overflow-hidden">
+    <div className="relative flex h-[100dvh] overflow-hidden">
       {/* Background with AlUla image */}
       <div 
         className="absolute inset-0 bg-cover bg-center z-0"
@@ -88,123 +176,132 @@ export default function ChatInterface() {
 
       {/* Main Chat Container */}
       <motion.div 
-        animate={{ width: activePanel ? '60%' : '100%' }} 
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }} 
-        className="relative flex flex-col z-10"
+        className="relative flex flex-col z-10 h-full w-full"
       >
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full max-w-4xl h-[85vh] backdrop-blur-2xl bg-white/10 border border-white/20 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex-1 flex items-center justify-center p-2 sm:p-4 md:p-8 transition-all duration-300">
+          <div className="w-full max-w-4xl h-[98dvh] sm:h-[95vh] backdrop-blur-2xl bg-white/10 border border-white/20 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300">
             
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                {/* AlUla Logo */}
+            {/* Header - Mobile Optimized */}
+            <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b border-white/10">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                {/* AlUla Logo - Responsive Size */}
                 <img 
                   src="/alula-logo.png" 
                   alt="AlUla Logo" 
-                  className="h-10 w-auto"
+                  className="h-8 sm:h-12 md:h-14 w-auto brightness-0 invert transition-all duration-300 flex-shrink-0"
                 />
-                <div className="h-8 w-px bg-white/20" />
-                <h1 className="text-xl font-bold text-white">Inspection Intelligence</h1>
+                <div className="h-6 sm:h-10 w-px bg-white/30 transition-all duration-300 hidden sm:block" />
+                <div className="flex flex-col min-w-0">
+                  <h1 className="text-sm sm:text-lg md:text-xl font-bold text-white transition-all duration-300 truncate">
+                    {isRTL ? "الذكاء الاصطناعي للتفتيش" : "Inspection AI"}
+                  </h1>
+                  <p className="text-white/50 text-[10px] sm:text-xs hidden sm:block truncate">
+                    {isRTL 
+                      ? "مراقبة المواقع التراثية"
+                      : "Heritage Site Analytics"
+                    }
+                  </p>
+                </div>
               </div>
-              {messages.length > 0 && (
-                <button 
-                  onClick={handleClear}
-                  className="text-white/60 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              )}
+              
+              <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
+                {/* Language Toggle */}
+                <LanguageToggle />
+                
+                {/* Clear Button */}
+                {messages.length > 0 && (
+                  <button 
+                    onClick={handleClear}
+                    className="flex items-center gap-1 sm:gap-2 text-white/60 hover:text-white transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-white/10"
+                    title={isRTL ? "مسح المحادثة" : "Clear conversation"}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span className="text-xs sm:text-sm hidden sm:inline">{isRTL ? "مسح" : "Clear"}</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
-            <main className="flex-1 overflow-y-auto custom-scrollbar px-6 py-4">
+            <main ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar px-2 sm:px-4 py-3 sm:py-4">
               <AnimatePresence mode="popLayout">
                 {messages.length === 0 ? (
                   <motion.div 
                     initial={{ opacity: 0 }} 
                     animate={{ opacity: 1 }} 
                     exit={{ opacity: 0 }} 
-                    className="flex flex-col items-center justify-center h-full space-y-8"
+                    className="flex flex-col items-center justify-center h-full"
                   >
-                    {/* Welcome Message */}
-                    <div className="text-center space-y-4">
-                      <motion.div
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.1 }}
-                      >
-                        <BarChart3 className="w-16 h-16 text-amber-400 mx-auto mb-4" strokeWidth={1.5} />
-                      </motion.div>
-                      
-                      <motion.h2
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="text-3xl font-bold text-white"
-                      >
-                        Welcome to AlUla Intelligence Hub
-                      </motion.h2>
-                      
-                      <motion.p
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.3 }}
-                        className="text-white/70 max-w-md mx-auto"
-                      >
-                        AI-powered insights for heritage site inspections and compliance monitoring
-                      </motion.p>
-                    </div>
-
-                    {/* Quick Action Cards */}
-                    <motion.div 
-                      initial={{ y: 20, opacity: 0 }}
+                    {/* Welcome Message - Mobile Optimized */}
+                    <motion.div
+                      initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.4 }}
-                      className="grid grid-cols-2 gap-4 w-full max-w-2xl"
+                      transition={{ delay: 0.1 }}
+                      className="text-center mb-4 sm:mb-8 px-2"
                     >
-                      {quickPrompts.map((item, idx) => (
-                        <motion.button
-                          key={idx}
-                          whileHover={{ scale: 1.02, y: -2 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => handleSend(item.prompt)}
-                          className="group relative overflow-hidden bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 hover:bg-white/10 hover:border-white/20 transition-all duration-300"
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="relative flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/20 flex items-center justify-center group-hover:from-amber-500/30 group-hover:to-orange-600/30 transition-all">
-                              <item.icon className="w-6 h-6 text-amber-400" strokeWidth={2} />
-                            </div>
-                            <span className="text-white font-medium text-left">{item.text}</span>
-                          </div>
-                        </motion.button>
-                      ))}
+                      <h2 className="text-lg sm:text-2xl font-bold text-white mb-1 sm:mb-2">
+                        {isRTL ? "مرحباً بك في مساعد العُلا الذكي" : "Welcome to AlUla Intelligence"}
+                      </h2>
+                      <p className="text-white/60 text-xs sm:text-sm max-w-lg">
+                        {isRTL 
+                          ? "اسألني أي شيء عن الفحوصات والمخالفات"
+                          : "Ask me anything about inspections & violations"
+                        }
+                      </p>
                     </motion.div>
 
-                    {/* Suggested Prompts */}
+                    {/* Suggested Questions Grid - Mobile: 1 col, Tablet: 2 cols */}
                     <motion.div
                       initial={{ y: 20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.5 }}
-                      className="text-center"
+                      transition={{ delay: 0.3 }}
+                      className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 w-full max-w-3xl px-2"
                     >
-                      <p className="text-white/50 text-sm mb-3">or try asking:</p>
-                      <div className="flex flex-wrap gap-2 justify-center max-w-xl">
-                        {[
-                          "What is the compliance rate?",
-                          "Show me repeat violations",
-                          "Inspector performance stats"
-                        ].map((prompt, idx) => (
-                          <button
+                      {(isRTL ? [
+                        { icon: PieChart, text: "ما هو معدل الامتثال الحالي؟", color: "from-emerald-500 to-teal-600" },
+                        { icon: AlertTriangle, text: "أظهر لي المخالفات المتكررة", color: "from-red-500 to-rose-600" },
+                        { icon: Users, text: "من هم أفضل المفتشين أداءً؟", color: "from-blue-500 to-indigo-600" },
+                        { icon: MapPin, text: "المخالفات حسب الحي", color: "from-amber-500 to-orange-600" },
+                        { icon: TrendingUp, text: "اتجاهات الفحوصات الشهرية", color: "from-purple-500 to-violet-600" },
+                        { icon: Target, text: "المواقع عالية المخاطر", color: "from-pink-500 to-rose-600" },
+                        { icon: Calendar, text: "إحصائيات هذا الشهر", color: "from-cyan-500 to-blue-600" },
+                        { icon: BarChart3, text: "مقارنة بين الأحياء", color: "from-lime-500 to-green-600" },
+                        { icon: Shield, text: "حالة الامتثال العامة", color: "from-indigo-500 to-purple-600" },
+                        { icon: Activity, text: "تقرير النشاط اليومي", color: "from-orange-500 to-red-600" }
+                      ] : [
+                        { icon: PieChart, text: "What is the current compliance rate?", color: "from-emerald-500 to-teal-600" },
+                        { icon: AlertTriangle, text: "Show me repeat violations", color: "from-red-500 to-rose-600" },
+                        { icon: Users, text: "Who are the top performing inspectors?", color: "from-blue-500 to-indigo-600" },
+                        { icon: MapPin, text: "Violations by neighborhood", color: "from-amber-500 to-orange-600" },
+                        { icon: TrendingUp, text: "Monthly inspection trends", color: "from-purple-500 to-violet-600" },
+                        { icon: Target, text: "High-risk locations", color: "from-pink-500 to-rose-600" },
+                        { icon: Calendar, text: "This month's statistics", color: "from-cyan-500 to-blue-600" },
+                        { icon: BarChart3, text: "Neighborhood comparison", color: "from-lime-500 to-green-600" },
+                        { icon: Shield, text: "Overall compliance status", color: "from-indigo-500 to-purple-600" },
+                        { icon: Activity, text: "Daily activity report", color: "from-orange-500 to-red-600" }
+                      ]).map((item, idx) => {
+                        const IconComponent = item.icon;
+                        return (
+                          <motion.button
                             key={idx}
-                            onClick={() => setInput(prompt)}
-                            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/70 hover:text-white text-sm transition-all"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 + idx * 0.05 }}
+                            whileHover={{ scale: 1.02, y: -2 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleSend(item.text)}
+                            className="group flex items-center gap-2 sm:gap-3 p-3 sm:p-4 bg-white/5 hover:bg-white/10 backdrop-blur-lg border border-white/10 hover:border-white/30 rounded-xl sm:rounded-2xl text-left transition-all duration-300"
+                            dir={isRTL ? "rtl" : "ltr"}
                           >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
+                            <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br ${item.color} flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow flex-shrink-0`}>
+                              <IconComponent className="w-4 h-4 sm:w-5 sm:h-5 text-white" strokeWidth={2} />
+                            </div>
+                            <span className="text-white/80 group-hover:text-white text-xs sm:text-sm font-medium transition-colors line-clamp-2">
+                              {item.text}
+                            </span>
+                          </motion.button>
+                        );
+                      })}
                     </motion.div>
                   </motion.div>
                 ) : (
@@ -219,9 +316,18 @@ export default function ChatInterface() {
                         <ChatMessage
                           role={msg.role}
                           content={msg.content}
+                          content_en={msg.content_en}
+                          content_ar={msg.content_ar}
                           tiles={msg.tiles}
                           type={msg.type}
                           onTileClick={handleTileClick}
+                          onContentUpdate={handleContentUpdate}
+                          isCompact={false}
+                          chartData={msg.chartData}
+                          chartConfig={msg.chartConfig}
+                          isRTL={isRTL}
+                          recommendations={msg.recommendations}
+                          onRecommendationClick={(text) => handleSend(text)}
                         />
                       </motion.div>
                     ))}
@@ -231,10 +337,10 @@ export default function ChatInterface() {
                         animate={{ opacity: 1 }}
                         className="flex gap-3 items-start"
                       >
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
-                          <Loader2 className="w-5 h-5 text-white animate-spin" />
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-spin" />
                         </div>
-                        <div className="flex-1 bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4">
+                        <div className="flex-1 bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4">
                           <div className="flex gap-1">
                             {[0, 1, 2].map((i) => (
                               <motion.div
@@ -258,53 +364,48 @@ export default function ChatInterface() {
               <div ref={messagesEndRef} />
             </main>
 
-            {/* Input Area */}
-            <div className="p-6 border-t border-white/10">
+            {/* Input Area - Mobile Optimized */}
+            <div className="p-3 sm:p-6 border-t border-white/10 transition-all duration-300 safe-area-bottom">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSend();
                 }}
-                className="flex gap-3"
+                className="flex gap-2"
               >
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask about inspections, violations, compliance..."
-                  className="flex-1 bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl px-5 py-3 text-white placeholder-white/40 focus:outline-none focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  placeholder={isRTL 
+                    ? "اسأل عن الفحوصات..."
+                    : "Ask about inspections..."
+                  }
+                  className="flex-1 bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl px-3 sm:px-5 py-2.5 sm:py-3 text-sm sm:text-base text-white placeholder-white/40 focus:outline-none focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 transition-all"
                   disabled={isLoading}
+                  dir={isRTL ? "rtl" : "ltr"}
                 />
                 <button
                   type="submit"
                   disabled={!input.trim() || isLoading}
-                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl disabled:shadow-none"
+                  className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl disabled:shadow-none"
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </form>
             </div>
           </div>
         </div>
       </motion.div>
-
-      {/* Right Panel - Analysis Dashboard */}
-      <AnimatePresence>
-        {activePanel && (
-          <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="relative w-[40%] z-20"
-          >
-            <AnalysisDashboard 
-              selectedKpi={activePanel} 
-              onClose={() => setActivePanel(null)} 
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
+  );
+}
+
+// Wrap in LanguageProvider for bilingual support
+export default function ChatInterface() {
+  return (
+    <LanguageProvider>
+      <ChatInterfaceInner />
+    </LanguageProvider>
   );
 }

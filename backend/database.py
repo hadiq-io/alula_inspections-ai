@@ -71,11 +71,18 @@ class Database:
         """Get high-risk locations - FROM YOUR SQL FILE"""
         query = f"""
         SELECT TOP {limit}
-            location_id, risk_probability, risk_category,
-            total_violations, critical_violations,
-            last_inspection_score, days_since_inspection
-        FROM ML_Location_Risk
-        ORDER BY risk_probability DESC
+            mlr.location_id, 
+            COALESCE(l.Name, 'Unknown Location ID: ' + CAST(mlr.location_id AS VARCHAR)) as location_name,
+            COALESCE(l.NameAr, l.Name, 'موقع غير معروف') as location_name_ar,
+            mlr.risk_probability, 
+            mlr.risk_category,
+            mlr.total_violations, 
+            mlr.critical_violations,
+            mlr.last_inspection_score, 
+            mlr.days_since_inspection
+        FROM ML_Location_Risk mlr
+        LEFT JOIN Locations l ON mlr.location_id = l.Id
+        ORDER BY mlr.risk_probability DESC
         """
         return self.execute_query(query)
     

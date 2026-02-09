@@ -1,0 +1,24 @@
+# Systemd service for AlUla Inspection AI Frontend
+# Place this in /etc/systemd/system/alula-frontend.service
+
+[Unit]
+Description=AlUla Inspection AI Frontend (Next.js)
+After=network.target alula-backend.service
+
+[Service]
+Type=simple
+User=azureuser
+Group=azureuser
+WorkingDirectory=/home/azureuser/alula-inspection-ai/frontend
+Environment="NODE_ENV=production"
+Environment="NEXT_PUBLIC_API_URL=http://20.3.236.169"
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:/var/log/alula/frontend.log
+StandardError=append:/var/log/alula/frontend-error.log
+
+[Install]
+WantedBy=multi-user.target

@@ -2,12 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet Map CSS */
+@import 'leaflet/dist/leaflet.css';
+
+/* Import Arabic font */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+/* Leaflet popup styling for dark theme */
+.leaflet-popup-content-wrapper {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.leaflet-popup-tip {
+  background: #1f2937;
+}
+
+.leaflet-container {
+  background: #111827;
+  font-family: 'Inter', 'Noto Sans Arabic', sans-serif;
+}
+
+.leaflet-control-zoom a {
+  background: #1f2937 !important;
+  color: #f3f4f6 !important;
+  border-color: #374151 !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: #374151 !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(31, 41, 55, 0.8) !important;
+  color: #9ca3af !important;
+}
+
+.leaflet-control-attribution a {
+  color: #60a5fa !important;
+}
+
 body {
   @apply bg-black text-[#C6C6D0];
   background-attachment: fixed;
   background-image: 
     radial-gradient(circle at 20% 30%, rgba(16, 76, 100, 0.15) 0%, transparent 60%),
     radial-gradient(circle at 80% 70%, rgba(192, 117, 77, 0.12) 0%, transparent 60%);
+  font-family: 'Inter', 'Noto Sans Arabic', sans-serif;
+}
+
+/* RTL Support */
+body.rtl {
+  direction: rtl;
+  text-align: right;
+}
+
+body.rtl * {
+  font-family: 'Noto Sans Arabic', 'Inter', sans-serif;
+}
+
+/* RTL specific adjustments */
+[dir="rtl"] .flex-row-reverse {
+  flex-direction: row;
+}
+
+[dir="rtl"] .text-right {
+  text-align: left;
+}
+
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+
+[dir="rtl"] .ml-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+[dir="rtl"] .mr-auto {
+  margin-right: 0;
+  margin-left: auto;
 }
 
 .glass {
@@ -78,4 +154,79 @@ body {
     0 35px 70px -20px rgba(192, 117, 77, 0.4),
     0 0 0 2px rgba(16, 76, 100, 0.3),
     inset 0 0 60px rgba(192, 117, 77, 0.05);
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 640px) {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  .premium-card:hover {
+    transform: none;
+  }
+  
+  /* Prevent zoom on input focus for iOS */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Better touch targets */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Reduce motion for mobile */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Safe area for notched phones */
+.safe-area-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 12px);
+}
+
+.safe-area-top {
+  padding-top: max(env(safe-area-inset-top), 12px);
+}
+
+/* Improve touch scrolling */
+.custom-scrollbar {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar on mobile but keep scrolling */
+@media (max-width: 640px) {
+  .custom-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .custom-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Mobile table scrolling */
+@media (max-width: 640px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
