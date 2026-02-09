@@ -4,13 +4,21 @@ from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
 import requests
+from typing import List, Dict, Any, Optional
+from database import Database
+
+# Import the new NLP chat agent
+from nlp import InspectionChatAgent, InspectionChatAgentSync
 
 load_dotenv()
 app = FastAPI()
 
+# CORS configuration - allow production domains
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -19,94 +27,405 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
 
-def detect_intent(message: str) -> str:
-    msg_lower = message.lower()
-    prediction_keywords = ["predict", "prediction", "forecast", "ml", "ai", "future", "risk", "anomaly", "recommend"]
-    kpi_keywords = ["kpi", "kpis", "dashboard", "metrics", "analytics", "report", "historical", "compliance", "violations"]
+
+# New bilingual chat request model
+class BilingualChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    language: str = "en"  # "en" or "ar"
+
+
+# ============================================================================
+# INTELLIGENT AGENT - AlUla Inspection AI Assistant
+# ============================================================================
+
+class InspectionAgent:
+    """Intelligent AI Agent for AlUla Inspection Analytics"""
     
-    for keyword in prediction_keywords:
-        if keyword in msg_lower:
-            return "prediction"
-    for keyword in kpi_keywords:
-        if keyword in msg_lower:
-            return "kpi"
-    return "general"
+    def __init__(self):
+        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        self.api_key = os.getenv("AZURE_OPENAI_KEY")
+        self.db = Database()
+        self.conversation_history: List[Dict[str, str]] = []
+        
+    def get_system_prompt(self) -> str:
+        """Comprehensive system prompt for the AI agent"""
+        return """You are the AlUla Inspection Intelligence Assistant, an advanced AI agent specialized in heritage site inspection analytics for AlUla, Saudi Arabia (a UNESCO World Heritage site).
 
-def get_kpi_tiles_response():
-    return {
-        "type": "kpi_tiles",
-        "tiles": [
-            {"id": "kpi_01", "name": "Monthly Inspection Trends", "description": "Tracks inspection volume, types, and outcomes over time", "table": "Event"},
-            {"id": "kpi_02", "name": "Compliance Rate Analysis", "description": "Measures compliance levels by month and establishment type", "table": "Event"},
-            {"id": "kpi_03", "name": "Inspector Performance Metrics", "description": "Evaluates inspector workload, efficiency, and violation detection", "table": "Event"},
-            {"id": "kpi_04", "name": "Violation Severity Distribution", "description": "Analyzes violations by severity level and financial impact", "table": "EventViolation"},
-            {"id": "kpi_05", "name": "Geographic Distribution Analysis", "description": "Maps inspections and violations across regions", "table": "Event"},
-            {"id": "kpi_06", "name": "Seasonal Patterns", "description": "Identifies seasonal trends in inspections and violations", "table": "Event"},
-            {"id": "kpi_07", "name": "Objection & Resolution Rates", "description": "Tracks objection filing and resolution patterns", "table": "EventViolation"},
-            {"id": "kpi_08", "name": "Top Violating Establishments", "description": "Identifies establishments with the most violations", "table": "Event"},
-            {"id": "kpi_09", "name": "Violation Recurrence Analysis", "description": "Tracks repeat violations and improvement patterns", "table": "Event"},
-            {"id": "kpi_10", "name": "Issue Category Analysis", "description": "Analyzes distribution of violations by question/category", "table": "EventViolation"}
-        ]
-    }
+## YOUR CAPABILITIES:
+You have access to real-time inspection data and 9 ML prediction models:
 
-def get_prediction_tiles_response():
-    return {
-        "type": "prediction_tiles",
-        "tiles": [
-            {"id": "ml_pred_01", "name": "Inspection Volume Forecast", "description": "Future inspection trends and volume predictions", "table": "ML_Predictions", "model": "KPI_01"},
-            {"id": "ml_pred_02", "name": "Compliance Rate Forecast", "description": "Predicted compliance rates and risk levels", "table": "ML_Predictions", "model": "KPI_02"},
-            {"id": "ml_pred_03", "name": "Location Risk Assessment", "description": "Geographic risk zones and high-risk areas", "table": "ML_Location_Risk", "model": "KPI_03"},
-            {"id": "ml_pred_04", "name": "Anomaly Detection", "description": "Unusual patterns and outlier inspections", "table": "ML_Anomalies", "model": "KPI_04"},
-            {"id": "ml_pred_05", "name": "Severity Predictions", "description": "Predicted violation severity levels", "table": "ML_Severity_Predictions", "model": "KPI_05"},
-            {"id": "ml_pred_06", "name": "Scheduling Recommendations", "description": "Optimal inspection timing and resource allocation", "table": "ML_Scheduling_Recommendations", "model": "KPI_06"},
-            {"id": "ml_pred_07", "name": "Objection Likelihood", "description": "Predicted objection rates and resolution outcomes", "table": "ML_Objection_Predictions", "model": "KPI_07"},
-            {"id": "ml_pred_08", "name": "Location Clustering", "description": "Establishment groupings and violation patterns", "table": "ML_Location_Clusters", "model": "KPI_08"},
-            {"id": "ml_pred_09", "name": "Recurrence Risk Prediction", "description": "Repeat violation likelihood and improvement tracking", "table": "ML_Recurrence_Predictions", "model": "KPI_09"},
-            {"id": "ml_pred_10", "name": "Inspector Performance Forecast", "description": "Performance trends and efficiency predictions", "table": "ML_Inspector_Performance", "model": "KPI_10"}
-        ]
-    }
+### 10 KPIs You Can Report On:
+1. Total Inspections - Count of all inspections conducted
+2. Compliance Rate - Percentage of inspections without violations
+3. Total Violations - Count of all violations detected
+4. Inspector Count - Number of active inspectors
+5. Average Inspection Time - Mean duration of inspections
+6. Open Violations - Currently unresolved violations
+7. High Severity Violations - Critical violations (severity >= 3)
+8. Repeat Violations - Locations with recurring issues
+9. Objection Rate - Percentage of violations with objections filed
+10. Average Risk Score - Mean severity score across violations
 
-def call_claude_ai(user_message: str) -> str:
-    try:
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        api_key = os.getenv("AZURE_OPENAI_KEY")
-        url = f"{endpoint}/v1/messages"
-        headers = {"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"}
-        payload = {
-            "model": "claude-sonnet-4-5",
-            "max_tokens": 200,
-            "messages": [{"role": "user", "content": user_message}],
-            "system": "You are a helpful AlUla analytics assistant. Keep responses brief and conversational. NO MARKDOWN. NO asterisks. NO bold. NO formatting. Plain text only."
+### 9 ML Prediction Models:
+1. ML_Predictions - Forecasting completion rates & compliance
+2. ML_Location_Risk - Identifying high-risk heritage locations
+3. ML_Anomalies - Detecting unusual inspection patterns
+4. ML_Severity_Predictions - Predicting violation severity
+5. ML_Scheduling_Recommendations - Optimal inspection scheduling
+6. ML_Objection_Predictions - Objection outcome forecasts
+7. ML_Location_Clusters - Location grouping analysis
+8. ML_Recurrence_Predictions - Violation recurrence forecasts
+9. ML_Inspector_Performance - Inspector tier classification
+
+## YOUR BEHAVIOR:
+1. Be conversational and helpful - Answer questions naturally
+2. Use data when available - Reference specific numbers from the database
+3. Explain insights clearly - Help users understand what the data means
+4. Provide recommendations - Suggest actionable next steps
+5. Handle general questions - You can answer questions about any topic, not just inspections
+6. Be concise but complete - Don't over-explain, but cover the key points
+
+## RESPONSE FORMAT:
+- When presenting data with 3+ records, ALWAYS use Markdown tables
+- Example table format:
+| Inspector | Inspections | Score |
+|-----------|-------------|-------|
+| 23 | 11,271 | 46.97% |
+| 2279 | 11,628 | 10.45% |
+
+- Start with a brief summary (1-2 sentences)
+- Present data in clean tables
+- Format numbers with commas (1,234 not 1234)
+- End with key insights or recommendations
+- Keep responses focused and actionable
+
+## CONTEXT:
+You are helping inspection teams, managers, and analysts at AlUla understand their inspection data, identify risks, and improve compliance at heritage sites."""
+
+    def get_database_context(self, message: str) -> str:
+        """Fetch relevant database context based on the user's question"""
+        msg_lower = message.lower()
+        context_parts = []
+        
+        try:
+            # Always try to get dashboard stats for context
+            stats = self.db.get_dashboard_stats()
+            if stats:
+                context_parts.append(f"""CURRENT DASHBOARD STATS:
+- Total Inspections: {stats.get('total_inspections', 'N/A')}
+- Average Compliance Score: {stats.get('avg_compliance_score', 'N/A')}%
+- High-Risk Locations: {stats.get('high_risk_locations', 'N/A')}
+- Active ML Models: {stats.get('active_ml_models', 9)}""")
+            
+            # Get ML summary if asking about models/predictions
+            if any(w in msg_lower for w in ['model', 'ml', 'prediction', 'forecast', 'ai', 'status', 'summary']):
+                df = self.db.get_ml_summary()
+                if not df.empty:
+                    context_parts.append(f"ML MODEL STATUS:\n{df.to_string(index=False)}")
+            
+            # Get high-risk locations if relevant
+            if any(w in msg_lower for w in ['risk', 'high-risk', 'dangerous', 'location', 'site']):
+                df = self.db.get_high_risk_locations(5)
+                if not df.empty:
+                    context_parts.append(f"TOP HIGH-RISK LOCATIONS:\n{df.to_string(index=False)}")
+            
+            # Get inspector performance if relevant
+            if any(w in msg_lower for w in ['inspector', 'performance', 'team', 'staff', 'employee']):
+                df = self.db.get_inspector_performance()
+                if not df.empty:
+                    context_parts.append(f"INSPECTOR PERFORMANCE:\n{df.head(5).to_string(index=False)}")
+            
+            # Get anomalies if relevant
+            if any(w in msg_lower for w in ['anomal', 'unusual', 'outlier', 'strange', 'weird']):
+                df = self.db.get_anomalies(5)
+                if not df.empty:
+                    context_parts.append(f"DETECTED ANOMALIES:\n{df.to_string(index=False)}")
+            
+            # Get recurrence predictions if relevant
+            if any(w in msg_lower for w in ['recur', 'repeat', 'again', 'pattern']):
+                df = self.db.get_recurrence_predictions(5)
+                if not df.empty:
+                    context_parts.append(f"RECURRENCE PREDICTIONS:\n{df.to_string(index=False)}")
+                    
+        except Exception as e:
+            print(f"⚠️ Database context error: {e}")
+            # Don't add error to context, just continue without DB data
+        
+        return "\n\n".join(context_parts) if context_parts else ""
+
+    def call_claude(self, user_message: str, context: str = "") -> str:
+        """Call Claude API via Azure endpoint"""
+        try:
+            url = f"{self.endpoint}/v1/messages"
+            
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01"
+            }
+            
+            # Build messages with conversation history
+            messages = []
+            for msg in self.conversation_history[-10:]:  # Keep last 10 messages for context
+                messages.append(msg)
+            
+            # Add current message with context
+            if context:
+                enhanced_message = f"{user_message}\n\n---\nRELEVANT DATA FROM DATABASE:\n{context}"
+            else:
+                enhanced_message = user_message
+            
+            messages.append({"role": "user", "content": enhanced_message})
+            
+            payload = {
+                "model": "claude-sonnet-4-5",
+                "max_tokens": 1500,
+                "system": self.get_system_prompt(),
+                "messages": messages
+            }
+            
+            print(f"🔄 Calling Claude API...")
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            
+            if response.status_code != 200:
+                print(f"❌ API Error {response.status_code}: {response.text}")
+                return f"I'm having trouble connecting to the AI service (Status: {response.status_code}). Please check your API configuration."
+            
+            result = response.json()
+            ai_text = result.get('content', [{}])[0].get('text', '')
+            
+            if not ai_text:
+                return "I received an empty response. Please try again."
+            
+            return ai_text
+            
+        except requests.exceptions.Timeout:
+            print("❌ API Timeout")
+            return "The AI service is taking too long to respond. Please try again."
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Connection Error: {e}")
+            return "Unable to connect to the AI service. Please check your network connection."
+        except Exception as e:
+            print(f"❌ Claude API Error: {e}")
+            return f"An error occurred: {str(e)}"
+
+    def detect_intent(self, message: str) -> str:
+        """Detect the intent of the user's message"""
+        msg_lower = message.lower()
+        
+        # Check for KPI dashboard/tiles request
+        kpi_tile_keywords = ["show kpi", "show me kpi", "kpi dashboard", "all kpis", "list kpis", "kpi tiles", "show dashboard"]
+        if any(kw in msg_lower for kw in kpi_tile_keywords):
+            return "kpi_tiles"
+        
+        # Check for ML/prediction tiles request
+        ml_tile_keywords = ["show prediction", "show ml", "ml models", "all models", "prediction tiles", "show models", "ai models"]
+        if any(kw in msg_lower for kw in ml_tile_keywords):
+            return "prediction_tiles"
+        
+        # Everything else goes to the AI for intelligent handling
+        return "ai_chat"
+
+    def process_message(self, user_message: str) -> Dict[str, Any]:
+        """Main entry point - process user message and return response"""
+        print(f"\n{'='*60}")
+        print(f"📨 USER: {user_message}")
+        
+        intent = self.detect_intent(user_message)
+        print(f"🎯 INTENT: {intent}")
+        
+        if intent == "kpi_tiles":
+            return self.get_kpi_tiles_response()
+        
+        elif intent == "prediction_tiles":
+            return self.get_prediction_tiles_response()
+        
+        else:
+            # AI Chat - get context and call Claude
+            context = self.get_database_context(user_message)
+            print(f"📊 CONTEXT LENGTH: {len(context)} chars")
+            
+            ai_response = self.call_claude(user_message, context)
+            print(f"🤖 AI RESPONSE: {ai_response[:100]}...")
+            
+            # Store in conversation history
+            self.conversation_history.append({"role": "user", "content": user_message})
+            self.conversation_history.append({"role": "assistant", "content": ai_response})
+            
+            # Keep history manageable
+            if len(self.conversation_history) > 20:
+                self.conversation_history = self.conversation_history[-20:]
+            
+            return {
+                "message": ai_response,
+                "chart_data": None,
+                "chart_type": None
+            }
+
+    def get_kpi_tiles_response(self) -> Dict[str, Any]:
+        """Return KPI tiles for the dashboard"""
+        return {
+            "type": "kpi_tiles",
+            "tiles": [
+                {"id": "kpi_01", "name": "Monthly Inspection Trends", "description": "Tracks inspection volume, types, and outcomes over time", "table": "Event"},
+                {"id": "kpi_02", "name": "Compliance Rate Analysis", "description": "Measures compliance levels by month and establishment type", "table": "Event"},
+                {"id": "kpi_03", "name": "Inspector Performance Metrics", "description": "Evaluates inspector workload, efficiency, and violation detection", "table": "Event"},
+                {"id": "kpi_04", "name": "Violation Severity Distribution", "description": "Analyzes violations by severity level and financial impact", "table": "EventViolation"},
+                {"id": "kpi_05", "name": "Geographic Distribution Analysis", "description": "Maps inspections and violations across regions", "table": "Event"},
+                {"id": "kpi_06", "name": "Seasonal Patterns", "description": "Identifies seasonal trends in inspections and violations", "table": "Event"},
+                {"id": "kpi_07", "name": "Objection & Resolution Rates", "description": "Tracks objection filing and resolution patterns", "table": "EventViolation"},
+                {"id": "kpi_08", "name": "Top Violating Establishments", "description": "Identifies establishments with the most violations", "table": "Event"},
+                {"id": "kpi_09", "name": "Violation Recurrence Analysis", "description": "Tracks repeat violations and improvement patterns", "table": "Event"},
+                {"id": "kpi_10", "name": "Issue Category Analysis", "description": "Analyzes distribution of violations by question/category", "table": "EventViolation"}
+            ]
         }
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        text = response.json()['content'][0]['text']
-        text = text.replace('**', '').replace('*', '').replace('__', '').replace('_', '').replace('#', '')
-        return text
-    except:
-        return "Hello! I'm your AlUla analytics assistant. Ask me about KPIs or predictions."
+
+    def get_prediction_tiles_response(self) -> Dict[str, Any]:
+        """Return ML prediction tiles for the dashboard"""
+        return {
+            "type": "prediction_tiles",
+            "tiles": [
+                {"id": "ml_pred_01", "name": "Inspection Volume Forecast", "description": "Future inspection trends and volume predictions", "table": "ML_Predictions", "model": "Prophet/ARIMA"},
+                {"id": "ml_pred_02", "name": "Compliance Rate Forecast", "description": "Predicted compliance rates and risk levels", "table": "ML_Predictions", "model": "Time Series"},
+                {"id": "ml_pred_03", "name": "Location Risk Assessment", "description": "Geographic risk zones and high-risk areas", "table": "ML_Location_Risk", "model": "Random Forest"},
+                {"id": "ml_pred_04", "name": "Anomaly Detection", "description": "Unusual patterns and outlier inspections", "table": "ML_Anomalies", "model": "Isolation Forest"},
+                {"id": "ml_pred_05", "name": "Severity Predictions", "description": "Predicted violation severity levels", "table": "ML_Severity_Predictions", "model": "XGBoost"},
+                {"id": "ml_pred_06", "name": "Scheduling Recommendations", "description": "Optimal inspection timing and resource allocation", "table": "ML_Scheduling_Recommendations", "model": "Decision Tree"},
+                {"id": "ml_pred_07", "name": "Objection Likelihood", "description": "Predicted objection rates and resolution outcomes", "table": "ML_Objection_Predictions", "model": "Logistic Regression"},
+                {"id": "ml_pred_08", "name": "Location Clustering", "description": "Establishment groupings and violation patterns", "table": "ML_Location_Clusters", "model": "K-Means"},
+                {"id": "ml_pred_09", "name": "Recurrence Risk Prediction", "description": "Repeat violation likelihood and improvement tracking", "table": "ML_Recurrence_Predictions", "model": "LSTM"},
+                {"id": "ml_pred_10", "name": "Inspector Performance Forecast", "description": "Performance trends and efficiency predictions", "table": "ML_Inspector_Performance", "model": "Neural Network"}
+            ]
+        }
+
+    def clear_history(self):
+        """Clear conversation history"""
+        self.conversation_history = []
+
+
+# ============================================================================
+# GLOBAL AGENT INSTANCES
+# ============================================================================
+agent = InspectionAgent()
+
+# Initialize the new bilingual chat agent
+try:
+    bilingual_agent = InspectionChatAgent()
+    print("✅ Bilingual NLP Chat Agent initialized")
+except Exception as e:
+    print(f"⚠️ Bilingual agent init error: {e}")
+    bilingual_agent = None
+
+
+# ============================================================================
+# API ENDPOINTS
+# ============================================================================
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    print(f"\n=== REQUEST: {request.message}")
-    intent = detect_intent(request.message)
-    print(f"=== INTENT: {intent}")
+    """Main chat endpoint (original)"""
+    return agent.process_message(request.message)
+
+
+@app.post("/api/v2/chat")
+async def chat_v2(request: BilingualChatRequest):
+    """
+    Bilingual chat endpoint (Phase 2).
+    Supports Arabic and English queries with inline charts.
     
-    if intent == "kpi":
-        return get_kpi_tiles_response()
-    elif intent == "prediction":
-        return get_prediction_tiles_response()
-    else:
-        ai_response = call_claude_ai(request.message)
-        return {"message": ai_response, "chart_data": None, "chart_type": None}
+    Request body:
+    - message: User's question (Arabic or English)
+    - session_id: Optional session ID for follow-up context
+    - language: Response language preference ("en" or "ar")
+    
+    Response:
+    - response: Natural language response (English)
+    - response_ar: Arabic response
+    - data: Query result data
+    - chart_config: Chart configuration for rendering
+    - session_id: Session ID for follow-ups
+    """
+    if not bilingual_agent:
+        return {
+            "error": "Bilingual chat agent not available",
+            "response": "The bilingual chat system is not configured. Please check server logs.",
+            "response_ar": "نظام الدردشة ثنائي اللغة غير متاح. يرجى التحقق من سجلات الخادم."
+        }
+    
+    try:
+        result = await bilingual_agent.process_query(
+            query=request.message,
+            session_id=request.session_id,
+            language=request.language
+        )
+        return result
+    except Exception as e:
+        return {
+            "error": str(e),
+            "response": f"An error occurred: {str(e)}",
+            "response_ar": f"حدث خطأ: {str(e)}"
+        }
+
+
+@app.get("/api/v2/health")
+async def health_v2():
+    """Health check for bilingual chat agent"""
+    if bilingual_agent:
+        return bilingual_agent.health_check()
+    return {
+        "status": "not_initialized",
+        "error": "Bilingual agent failed to initialize"
+    }
+
+
+@app.get("/api/v2/templates")
+async def get_templates():
+    """Get available SQL template count and info"""
+    if bilingual_agent:
+        return {
+            "count": bilingual_agent.get_template_count(),
+            "status": "ready"
+        }
+    return {"count": 0, "status": "not_initialized"}
+
+
+@app.delete("/api/v2/session/{session_id}")
+async def clear_session(session_id: str):
+    """Clear a specific chat session"""
+    if bilingual_agent:
+        bilingual_agent.clear_session(session_id)
+        return {"success": True, "message": f"Session {session_id} cleared"}
+    return {"success": False, "message": "Agent not available"}
 
 @app.delete("/api/chat/clear")
 async def clear_chat():
-    return {"success": True}
+    """Clear conversation history"""
+    agent.clear_history()
+    return {"success": True, "message": "Conversation history cleared"}
 
 @app.get("/")
 async def root():
-    return {"status": "running"}
+    """Health check endpoint"""
+    return {"status": "running", "agent": "AlUla Inspection AI", "version": "2.0"}
+
+@app.get("/api/health")
+async def health():
+    """Detailed health check"""
+    try:
+        db = Database()
+        stats = db.get_dashboard_stats()
+        db_status = "connected" if stats.get('total_inspections', 0) > 0 else "no data"
+    except:
+        db_status = "disconnected"
+    
+    return {
+        "status": "running",
+        "database": db_status,
+        "ai_endpoint": os.getenv("AZURE_OPENAI_ENDPOINT", "not configured"),
+        "agent": "AlUla Inspection Intelligence Assistant"
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
