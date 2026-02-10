@@ -65,7 +65,7 @@ class InputValidator:
     # Common misinterpretation pairs - system will ask for clarification
     AMBIGUOUS_PAIRS = {
         ('inspector', 'inspection'): "Did you mean **inspectors** (people who conduct inspections) or **inspections** (the inspection events)?",
-        ('event', 'events'): "Are you asking about **specific events/inspections** in the system or something else?",
+        ('event', 'events'): None,  # Disabled - events is unambiguous in this system
         ('location', 'neighborhood'): "Are you asking about a **specific business location** or a **general area/neighborhood**?",
         ('violation', 'compliance'): "Are you interested in **violations** (problems found) or **compliance rates** (success metrics)?",
     }
@@ -245,6 +245,10 @@ class InputValidator:
         
         # Step 2: Check for ambiguous pairs
         for (term1, term2), clarification in self.AMBIGUOUS_PAIRS.items():
+            # Skip if clarification is None (disabled)
+            if clarification is None:
+                continue
+                
             # Check if BOTH terms could apply (user said something ambiguous)
             term1_match = self._fuzzy_match(input_lower, term1)
             term2_match = self._fuzzy_match(input_lower, term2)
@@ -378,41 +382,85 @@ class InputValidator:
     ) -> Tuple[str, List[str]]:
         """Generate a helpful clarification question"""
         
+        input_lower = user_input.lower()
+        
         if unmatched_terms:
             # User mentioned something we can't find
-            question = f"I'm not sure I understood your request correctly. "
+            question = f"I want to make sure I understand your request correctly. "
             
-            if 'inspector' in ' '.join(unmatched_terms).lower():
-                question += "Are you asking about:\n"
+            if any('inspector' in term.lower() for term in unmatched_terms):
+                question += "When you mention inspectors, are you looking for:\n"
                 options = [
-                    "📊 **Inspector performance** - See which inspectors completed the most events",
-                    "📋 **Inspection details** - View specific inspection records",
-                    "👥 **List of inspectors** - See all active inspector IDs"
+                    "Top inspectors by completed inspections",
+                    "Inspector performance rankings",
+                    "All active inspector IDs",
+                    "Something else - please describe"
                 ]
-            elif 'event' in ' '.join(unmatched_terms).lower():
-                question += "What would you like to know about events?\n"
+            elif 'event' in input_lower or 'inspection' in input_lower:
+                question += "For events/inspections, would you like:\n"
                 options = [
-                    "📈 **Event counts** - Total number of inspections/events",
-                    "📅 **Recent events** - Latest inspection activities",
-                    "🔍 **Event details** - Specific event information"
+                    "Total inspection count",
+                    "Recent inspection activity",
+                    "Inspections by status",
+                    "Inspection trends over time"
+                ]
+            elif 'violation' in input_lower:
+                question += "For violations data, what would you like to see:\n"
+                options = [
+                    "Total violation count",
+                    "Violations by severity",
+                    "Open/unresolved violations",
+                    "Violation trends"
+                ]
+            elif 'location' in input_lower or 'business' in input_lower:
+                question += "For location data, what are you interested in:\n"
+                options = [
+                    "List of all business locations",
+                    "Locations by category",
+                    "Location inspection history",
+                    "High-risk locations"
                 ]
             else:
                 question += "Could you please clarify what data you're looking for?\n"
                 options = [
-                    "📍 **Locations** - Business locations and their details",
-                    "📋 **Events/Inspections** - Inspection records and results",
-                    "⚠️ **Violations** - Violation records and statistics",
-                    "📊 **ML Predictions** - AI-powered insights and forecasts"
+                    "📍 Locations - Business locations and their details",
+                    "📋 Events/Inspections - Inspection records and results",
+                    "⚠️ Violations - Violation records and statistics",
+                    "📊 ML Predictions - AI-powered insights and forecasts"
                 ]
             
             return question, options
         
+        # Check what concepts were extracted and provide relevant options
+        if 'inspector' in concepts or 'inspectors' in concepts:
+            return (
+                "What would you like to know about inspectors?\n",
+                [
+                    "Top 10 inspectors by inspections completed",
+                    "Inspector performance summary",
+                    "List all active inspectors"
+                ]
+            )
+        
+        if 'event' in concepts or 'events' in concepts or 'inspection' in concepts:
+            return (
+                "What would you like to know about inspections/events?\n",
+                [
+                    "Total number of inspections",
+                    "Recent inspection activity",
+                    "Inspection status breakdown"
+                ]
+            )
+        
         # General clarification
         return (
-            "I want to make sure I give you the right information. Could you please specify:\n"
-            "1. What type of data are you interested in?\n"
-            "2. Any specific filters (time period, location, etc.)?",
-            ["Events/Inspections", "Violations", "Locations", "ML Analytics"]
+            "I want to make sure I give you the right information. What type of data are you looking for?\n",
+            [
+                "Events/Inspections - Inspection activity data",
+                "Violations - Violation records",
+                "Locations - Business location information",
+                "ML Analytics - Predictions and insights"
+            ]
         )
     
     def _get_available_options(self, unknown_term: str) -> List[str]:
