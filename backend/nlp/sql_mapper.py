@@ -24,7 +24,7 @@ class SQLMapper:
         
         # Intent to template domain mapping
         self.intent_domain_map = {
-            "COUNT": ["reports", "violations", "inspectors", "neighborhoods"],
+            "COUNT": ["reports", "violations", "inspectors", "neighborhoods", "locations"],
             "SUM": ["violations"],
             "AVERAGE": ["reports", "violations", "inspectors", "neighborhoods"],
             "RANKING": ["violations", "inspectors", "neighborhoods", "complex"],
@@ -32,7 +32,8 @@ class SQLMapper:
             "TREND": ["reports", "violations", "inspectors", "neighborhoods"],
             "FORECAST": ["forecasting"],
             "FILTER": ["reports", "violations", "neighborhoods", "forecasting"],
-            "DETAIL": ["inspectors", "neighborhoods", "complex"],
+            "DETAIL": ["inspectors", "neighborhoods", "complex", "locations"],
+            "LIST": ["locations", "neighborhoods", "inspectors", "violations"],
             "MAP": ["map", "spatial", "location", "geography"],
             "SPATIAL": ["map", "spatial", "location", "geography"]
         }
@@ -126,6 +127,17 @@ class SQLMapper:
             elif template.get("default_chart") == "map":
                 score += 25.0
         
+        # LIST intent - Strong boost for list templates
+        if intent == "LIST":
+            if "_list" in template.get("id", "").lower() or "list" in sql:
+                score += 25.0  # High priority for list templates
+            # For locations specifically
+            if metric and metric.lower() in ("locations", "location"):
+                if template_id == "LOC_00":  # locations_list template
+                    score += 50.0  # Highest priority
+                elif "locations" in template_id.lower():
+                    score += 20.0
+        
         # ==================== ENTITY MATCHING ====================
         
         # Inspector entity - ENHANCED MATCHING
@@ -204,6 +216,17 @@ class SQLMapper:
             elif metric_lower in ("forecast", "prediction", "trend", "توقعات", "اتجاه"):
                 if template_id.startswith("FRC_"):
                     score += 20.0
+            
+            # LOCATIONS metric - LIST ALL LOCATIONS
+            elif metric_lower in ("locations", "location", "مواقع", "موقع", "businesses", "business"):
+                if "locations" in template_id.lower():
+                    score += 30.0  # Highest priority for location templates
+                elif template_id.startswith("LOC_"):
+                    score += 25.0
+                elif "locations" in sql and "eventviolation" not in sql:
+                    score += 15.0
+                else:
+                    score -= 20.0  # Strong penalty for non-location templates
         
         # ==================== TIME RANGE MATCHING ====================
         

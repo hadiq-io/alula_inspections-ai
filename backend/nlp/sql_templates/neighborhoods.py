@@ -7,6 +7,28 @@ Event.Location -> Locations.Id
 """
 
 TEMPLATES = {
+    "locations_list": {
+        "id": "LOC_00",
+        "intents": ["LIST", "DETAIL", "FILTER"],
+        "question_ar": "قائمة المواقع",
+        "question_en": "List of locations",
+        "default_chart": "none",
+        "sql": """
+            SELECT TOP 50
+                l.Name as location_name,
+                l.NameAr as location_name_ar,
+                COALESCE(lt.Name, 'Unknown') as location_type,
+                l.Category as category,
+                l.Address as address,
+                CASE WHEN l.IsActive = 1 THEN 'Active' ELSE 'Inactive' END as status
+            FROM Locations l
+            LEFT JOIN LocationType lt ON l.LocationType = lt.Id
+            WHERE l.Isdeleted = 0
+            ORDER BY l.Name
+        """,
+        "filters": {}
+    },
+    
     "locations_total_count": {
         "id": "LOC_01",
         "intents": ["COUNT"],
