@@ -13,6 +13,7 @@ Modules:
 - kpi_library: Core KPI definitions and calculations
 - ml_predictions_library: ML prediction table queries
 - chat_agent: Main orchestrator for the chatbot pipeline
+- input_validator: Input validation and clarification system
 """
 
 from .query_parser import QueryParser
@@ -23,6 +24,7 @@ from .response_generator import ResponseGenerator
 from .kpi_library import KPILibrary
 from .ml_predictions_library import MLPredictionsLibrary
 from .chat_agent import InspectionChatAgent, InspectionChatAgentSync
+from .input_validator import InputValidator, ClarificationManager, get_validator, get_clarification_manager
 
 __all__ = [
     'QueryParser',
@@ -33,5 +35,9 @@ __all__ = [
     'KPILibrary',
     'MLPredictionsLibrary',
     'InspectionChatAgent',
-    'InspectionChatAgentSync'
+    'InspectionChatAgentSync',
+    'InputValidator',
+    'ClarificationManager',
+    'get_validator',
+    'get_clarification_manager'
 ]

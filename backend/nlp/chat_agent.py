@@ -21,6 +21,7 @@ from .context_manager import ContextManager
 from .response_generator import ResponseGenerator
 from .kpi_library import KPILibrary
 from .ml_predictions_library import MLPredictionsLibrary
+from .input_validator import InputValidator, ClarificationManager, get_validator, get_clarification_manager
 
 
 class QueryCache:
@@ -148,6 +149,10 @@ class InspectionChatAgent:
         self.kpi_library = None
         self.ml_library = None
         
+        # Input validation and clarification
+        self.input_validator = get_validator()
+        self.clarification_manager = get_clarification_manager()
+        
         # Response caching for performance
         self.cache = QueryCache(max_size=100, ttl_seconds=300)
         
@@ -250,6 +255,38 @@ class InspectionChatAgent:
                 cached["session_id"] = session_id
                 cached["cached"] = True
                 return cached
+            
+            # STEP 0: Check if this is a response to a pending clarification
+            if self.clarification_manager.has_pending_clarification(session_id):
+                resolved, clarified_intent = self.clarification_manager.handle_clarification_response(
+                    session_id, query
+                )
+                if resolved:
+                    # User clarified - update query based on their choice
+                    query = f"{clarified_intent}"
+                    print(f"✅ Clarification resolved: {clarified_intent}")
+            
+            # STEP 0.5: Validate input BEFORE parsing
+            validation = self.input_validator.validate(query)
+            
+            if validation.needs_clarification:
+                # Return clarification request instead of processing
+                clarification_response = self.clarification_manager.request_clarification(
+                    session_id, validation
+                )
+                
+                # Format as a user-friendly response
+                options_text = "\n".join([f"  {i+1}. {opt}" for i, opt in enumerate(clarification_response['options'])])
+                
+                return {
+                    "response": f"{clarification_response['message']}\n\n{options_text}\n\nPlease reply with the number of your choice or describe what you need.",
+                    "response_ar": f"{clarification_response['message']}\n\n{options_text}",
+                    "needs_clarification": True,
+                    "clarification_options": clarification_response['options'],
+                    "confidence": clarification_response['confidence'],
+                    "session_id": session_id,
+                    "type": "clarification_needed"
+                }
             
             # Step 1: Parse the query using Claude
             parsed = self.query_parser.parse(query)
