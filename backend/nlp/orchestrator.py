@@ -150,6 +150,68 @@ Columns: Id, Name, NameAr
 - Financial data beyond violation fines
 - Geographic neighborhoods (only individual business locations)
 - Customer reviews or ratings
+- **NO ViolationType or ViolationCategory lookup table** - violations only have QuestionSectionId (numeric)
+- **NO ActivityType lookup table** - Locations.LocationType is numeric only
+- **NO Question or QuestionSection lookup tables** - only numeric IDs exist
+
+### COMMON SQL PATTERNS:
+
+**Violations by Severity:**
+```sql
+SELECT 
+    CASE WHEN Severity IS NULL THEN 'Not Specified' ELSE CAST(Severity AS VARCHAR) END as SeverityLevel,
+    COUNT(*) as ViolationCount,
+    SUM(ViolationValue) as TotalFines
+FROM EventViolation
+GROUP BY Severity
+ORDER BY ViolationCount DESC
+```
+
+**Violations by QuestionSectionId (closest to "violation types"):**
+```sql
+SELECT 
+    QuestionSectionId as ViolationCategory,
+    COUNT(*) as ViolationCount,
+    SUM(ViolationValue) as TotalFines
+FROM EventViolation
+WHERE QuestionSectionId IS NOT NULL
+GROUP BY QuestionSectionId
+ORDER BY ViolationCount DESC
+```
+
+**Business Activity Types (by LocationType numeric):**
+```sql
+SELECT 
+    l.LocationType as ActivityType,
+    COUNT(e.Id) as InspectionCount
+FROM Event e
+JOIN Locations l ON e.Location = l.Id
+WHERE e.IsDeleted = 0
+GROUP BY l.LocationType
+ORDER BY InspectionCount DESC
+```
+
+**Restaurant/Specific Business Search (by Name pattern):**
+```sql
+SELECT l.Name, l.NameAr, COUNT(e.Id) as InspectionCount, AVG(e.Score) as AvgScore
+FROM Event e
+JOIN Locations l ON e.Location = l.Id
+WHERE e.IsDeleted = 0 
+  AND (l.Name LIKE '%restaurant%' OR l.Name LIKE '%مطعم%' OR l.NameAr LIKE '%مطعم%')
+GROUP BY l.Id, l.Name, l.NameAr
+ORDER BY InspectionCount DESC
+```
+
+**Last available month (December 2025 - database ends here):**
+```sql
+SELECT COUNT(*) as InspectionCount
+FROM Event
+WHERE IsDeleted = 0 
+  AND SubmitionDate >= '2025-12-01' AND SubmitionDate < '2026-01-01'
+```
+
+**NOTE:** When user asks for "last month" and today is after Dec 2025, 
+use December 2025 as the latest available data period.
 """
 
     def _get_classification_prompt(self) -> str:
