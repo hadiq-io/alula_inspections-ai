@@ -57,6 +57,11 @@ class LearnedQuery:
     promotion_date: Optional[str] = None
     confidence_score: float = 0.0
     
+    # User validation fields
+    user_validated: bool = False  # True if user explicitly validated
+    validation_source: str = "auto"  # "auto" or "user"
+    validation_count: int = 0  # Number of user validations
+    
     @property
     def success_rate(self) -> float:
         total = self.success_count + self.failure_count
@@ -154,9 +159,26 @@ class QueryLearningSystem:
                 avg_execution_time_ms REAL DEFAULT 0,
                 is_promoted INTEGER DEFAULT 0,
                 promotion_date TEXT,
-                confidence_score REAL DEFAULT 0
+                confidence_score REAL DEFAULT 0,
+                user_validated INTEGER DEFAULT 0,
+                validation_source TEXT DEFAULT 'auto',
+                validation_count INTEGER DEFAULT 0
             )
         """)
+        
+        # Add new columns if they don't exist (for migration)
+        try:
+            cursor.execute("ALTER TABLE learned_queries ADD COLUMN user_validated INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE learned_queries ADD COLUMN validation_source TEXT DEFAULT 'auto'")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE learned_queries ADD COLUMN validation_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         
         # Index for pattern lookups
         cursor.execute("""
@@ -168,6 +190,12 @@ class QueryLearningSystem:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_promotion 
             ON learned_queries(is_promoted, use_count, success_count)
+        """)
+        
+        # Index for user-validated queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_validated 
+            ON learned_queries(user_validated, validation_count)
         """)
         
         conn.commit()
@@ -193,6 +221,10 @@ class QueryLearningSystem:
             data['entities_pattern'] = json.loads(data['entities_pattern'] or '{}')
             data['tables_used'] = json.loads(data['tables_used'] or '[]')
             data['is_promoted'] = bool(data['is_promoted'])
+            # Parse user validation fields
+            data['user_validated'] = bool(data.get('user_validated', 0))
+            data['validation_source'] = data.get('validation_source', 'auto')
+            data['validation_count'] = data.get('validation_count', 0)
             
             query = LearnedQuery.from_dict(data)
             self._pattern_cache[query.pattern] = query
@@ -210,7 +242,8 @@ class QueryLearningSystem:
         tables_used: List[str] = None,
         chart_type: str = "bar",
         execution_time_ms: float = 0,
-        success: bool = True
+        success: bool = True,
+        user_validated: bool = False  # NEW: User explicitly validated this query
     ) -> LearnedQuery:
         """
         Capture a dynamically generated query for learning.
@@ -226,6 +259,7 @@ class QueryLearningSystem:
             chart_type: Suggested chart type
             execution_time_ms: Query execution time
             success: Whether query executed successfully
+            user_validated: Whether user explicitly validated this as correct
             
         Returns:
             LearnedQuery object
@@ -254,13 +288,19 @@ class QueryLearningSystem:
                         / existing.use_count
                     )
                 
+                # Handle user validation - higher weight for promotion
+                if user_validated:
+                    existing.user_validated = True
+                    existing.validation_source = "user"
+                    existing.validation_count += 1
+                
                 # Update confidence
                 existing.confidence_score = self._calculate_confidence(existing)
                 
                 # Save update
                 self._save_query(existing)
                 
-                # Check for promotion
+                # Check for promotion (user-validated queries promote faster)
                 self._check_promotion(existing)
                 
                 return existing
@@ -282,7 +322,10 @@ class QueryLearningSystem:
                     success_count=1 if success else 0,
                     failure_count=0 if success else 1,
                     avg_execution_time_ms=execution_time_ms,
-                    confidence_score=0.5  # Initial confidence
+                    confidence_score=0.8 if user_validated else 0.5,  # Higher confidence if user-validated
+                    user_validated=user_validated,
+                    validation_source="user" if user_validated else "auto",
+                    validation_count=1 if user_validated else 0
                 )
                 
                 # Save to database
@@ -446,8 +489,9 @@ class QueryLearningSystem:
                 original_question, intent, entities_pattern, tables_used,
                 chart_type, created_at, last_used_at, use_count,
                 success_count, failure_count, avg_execution_time_ms,
-                is_promoted, promotion_date, confidence_score
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_promoted, promotion_date, confidence_score,
+                user_validated, validation_source, validation_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             query.id, query.pattern, query.sql, query.explanation_en,
             query.explanation_ar, query.original_question, query.intent,
@@ -455,7 +499,8 @@ class QueryLearningSystem:
             query.chart_type, query.created_at, query.last_used_at,
             query.use_count, query.success_count, query.failure_count,
             query.avg_execution_time_ms, int(query.is_promoted),
-            query.promotion_date, query.confidence_score
+            query.promotion_date, query.confidence_score,
+            int(query.user_validated), query.validation_source, query.validation_count
         ))
         
         conn.commit()
@@ -555,9 +600,13 @@ class QueryLearningSystem:
         if query.is_promoted:
             return False
         
+        # User-validated queries get faster promotion (2 uses instead of 3)
+        min_uses = 2 if query.user_validated else self.MIN_USES_FOR_PROMOTION
+        min_success_rate = 0.7 if query.user_validated else self.MIN_SUCCESS_RATE
+        
         # Check criteria
-        if (query.use_count >= self.MIN_USES_FOR_PROMOTION and
-            query.success_rate >= self.MIN_SUCCESS_RATE and
+        if (query.use_count >= min_uses and
+            query.success_rate >= min_success_rate and
             query.avg_execution_time_ms <= self.MAX_AVG_EXECUTION_TIME_MS):
             
             # Promote!
@@ -568,7 +617,8 @@ class QueryLearningSystem:
             # Export to templates file
             self._export_promoted_queries()
             
-            print(f"✅ Query promoted to permanent template: {query.id}")
+            validation_note = " (user-validated)" if query.user_validated else ""
+            print(f"✅ Query promoted to permanent template{validation_note}: {query.id}")
             return True
         
         return False

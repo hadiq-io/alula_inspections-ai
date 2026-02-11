@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, Brain, ChevronRight, User, Bot, Sparkles, CheckCircle, AlertTriangle, Info, TrendingUp, MapPin, Users, Calendar, PieChart, Target, Search } from 'lucide-react';
 import InlineChart from './InlineChart';
+import FeedbackButtons from './FeedbackButtons';
 
 interface ChartConfig {
   type: "bar" | "line" | "pie" | "composed" | "area" | "none";
@@ -35,6 +36,10 @@ interface ChatMessageProps {
   // Recommendations
   recommendations?: Recommendation[];
   onRecommendationClick?: (text: string) => void;
+  // Feedback system props
+  messageId?: string;
+  feedbackEnabled?: boolean;
+  onClarificationRetry?: (retryResponse: any) => void;
 }
 
 // Icon mapping for recommendations
@@ -336,12 +341,16 @@ export default function ChatMessage({
   recommendations,
   onRecommendationClick,
   content_en,
-  content_ar
+  content_ar,
+  messageId,
+  feedbackEnabled = false,
+  onClarificationRetry
 }: ChatMessageProps) {
   const [displayedContent, setDisplayedContent] = useState('');
   const [textComplete, setTextComplete] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const isUser = role === 'user';
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -573,6 +582,19 @@ export default function ChatMessage({
                   ))}
                 </div>
               </motion.div>
+            )}
+            
+            {/* User Feedback Buttons - Show after recommendations */}
+            {!isUser && textComplete && feedbackEnabled && messageId && !feedbackSubmitted && (
+              <FeedbackButtons
+                messageId={messageId}
+                isRTL={isRTL}
+                onFeedbackSubmitted={(status) => {
+                  setFeedbackSubmitted(true);
+                  console.log(`Feedback submitted: ${status} for message ${messageId}`);
+                }}
+                onClarificationRetry={onClarificationRetry}
+              />
             )}
           </div>
         </div>

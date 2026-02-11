@@ -22,6 +22,7 @@ from .response_generator import ResponseGenerator
 from .kpi_library import KPILibrary
 from .ml_predictions_library import MLPredictionsLibrary
 from .input_validator import InputValidator, ClarificationManager, get_validator, get_clarification_manager
+from .feedback_system import get_feedback_system
 
 
 class QueryCache:
@@ -338,6 +339,34 @@ class InspectionChatAgent:
                 "sql": sql,  # For debugging, can be removed in production
                 "cached": False
             }
+            
+            # Register for user feedback validation
+            try:
+                feedback_system = get_feedback_system()
+                message_id = feedback_system.generate_message_id()
+                
+                # Detect language of original query
+                query_lang = 'ar' if any('\u0600' <= c <= '\u06FF' for c in query) else 'en'
+                
+                # Create pending validation entry
+                feedback_system.create_pending_validation(
+                    message_id=message_id,
+                    question=query,
+                    question_lang=query_lang,
+                    sql_query=sql,
+                    response_en=response.get("message_en", response.get("message", "")),
+                    response_ar=response.get("message_ar", ""),
+                    template_id=template_id,
+                    chart_type=resolved.get("chart_type", "bar"),
+                    data_preview=data[:5] if data else None,
+                    conversation_id=session_id
+                )
+                
+                result["message_id"] = message_id
+                result["feedback_enabled"] = True
+            except Exception as fb_error:
+                print(f"⚠️ Feedback registration error: {fb_error}")
+                result["feedback_enabled"] = False
             
             # Cache the result for future requests
             self.cache.set(query, language, result)

@@ -7,8 +7,8 @@ import requests
 from typing import List, Dict, Any, Optional
 from database import Database
 
-# Import the new NLP chat agent
-from nlp import InspectionChatAgent, InspectionChatAgentSync
+# Import the new NLP chat agent and feedback system
+from nlp import InspectionChatAgent, InspectionChatAgentSync, get_feedback_system
 
 load_dotenv()
 app = FastAPI()
@@ -33,6 +33,19 @@ class BilingualChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     language: str = "en"  # "en" or "ar"
+
+
+# Feedback validation request models
+class FeedbackValidateRequest(BaseModel):
+    message_id: str
+    is_correct: bool  # True = correct, False = incorrect
+
+
+class FeedbackClarifyRequest(BaseModel):
+    message_id: str
+    clarification: str
+    expected_result: Optional[str] = None
+    language: str = "en"  # Language of clarification
 
 
 # ============================================================================
@@ -397,6 +410,162 @@ async def clear_session(session_id: str):
         bilingual_agent.clear_session(session_id)
         return {"success": True, "message": f"Session {session_id} cleared"}
     return {"success": False, "message": "Agent not available"}
+
+
+# ============================================================================
+# FEEDBACK VALIDATION ENDPOINTS
+# ============================================================================
+
+@app.post("/api/v2/feedback/validate")
+async def validate_feedback(request: FeedbackValidateRequest):
+    """
+    Validate an AI response as correct or incorrect.
+    
+    Request body:
+    - message_id: Unique ID of the message to validate
+    - is_correct: True if response was correct, False if incorrect
+    
+    Response:
+    - success: Whether validation was recorded
+    - validation_status: 'correct' or 'incorrect'
+    - needs_clarification: True if user should provide clarification
+    - message_en/message_ar: Bilingual feedback message
+    """
+    try:
+        feedback_system = get_feedback_system()
+        
+        if request.is_correct:
+            # Import learning system for promotion
+            from nlp.query_learning import QueryLearningSystem
+            learning_system = QueryLearningSystem()
+            result = feedback_system.validate_correct(
+                message_id=request.message_id,
+                learning_system=learning_system
+            )
+        else:
+            result = feedback_system.validate_incorrect(
+                message_id=request.message_id
+            )
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Feedback validation error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message_en": "Failed to record feedback",
+            "message_ar": "فشل في تسجيل الملاحظات"
+        }
+
+
+@app.post("/api/v2/feedback/clarify")
+async def submit_clarification(request: FeedbackClarifyRequest):
+    """
+    Submit clarification for an incorrect response.
+    
+    Request body:
+    - message_id: Original message ID that was marked incorrect
+    - clarification: User's clarification text
+    - expected_result: What the user expected (optional)
+    - language: Language of clarification ('en' or 'ar')
+    
+    Response:
+    - success: Whether clarification was recorded
+    - retry_context: Context for retrying the query
+    - message_en/message_ar: Bilingual acknowledgment
+    """
+    try:
+        feedback_system = get_feedback_system()
+        
+        result = feedback_system.submit_clarification(
+            message_id=request.message_id,
+            clarification=request.clarification,
+            clarification_lang=request.language,
+            expected_result=request.expected_result
+        )
+        
+        # If we have retry context and the bilingual agent is available,
+        # we can automatically retry with the clarified intent
+        if result.get('success') and bilingual_agent and result.get('retry_context'):
+            retry_ctx = result['retry_context']
+            original_question = retry_ctx.get('original_question', '')
+            clarification = retry_ctx.get('clarification', '')
+            
+            # Create enhanced query with clarification
+            enhanced_query = f"{original_question} [User clarification: {clarification}]"
+            
+            try:
+                # Process the clarified query
+                retry_result = await bilingual_agent.process_query(
+                    query=enhanced_query,
+                    language=request.language
+                )
+                
+                # Generate new message_id for retry
+                new_message_id = feedback_system.generate_message_id()
+                
+                # Link the retry to original
+                feedback_system.link_retry_response(
+                    request.message_id,
+                    new_message_id
+                )
+                
+                # Add the new message_id to retry result
+                retry_result['message_id'] = new_message_id
+                retry_result['is_retry'] = True
+                retry_result['original_message_id'] = request.message_id
+                
+                return {
+                    **result,
+                    'retry_response': retry_result
+                }
+            except Exception as retry_error:
+                print(f"⚠️ Retry failed: {retry_error}")
+                # Return just the clarification result without retry
+                result['retry_failed'] = True
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Clarification error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message_en": "Failed to process clarification",
+            "message_ar": "فشل في معالجة التوضيح"
+        }
+
+
+@app.get("/api/v2/feedback/status/{message_id}")
+async def get_feedback_status(message_id: str):
+    """
+    Get the validation status for a specific message.
+    
+    Path params:
+    - message_id: The message ID to check
+    
+    Response:
+    - validation_status: Current status (pending, correct, incorrect, clarified)
+    - validated_at: Timestamp of validation
+    - promoted: Whether query was promoted to learning system
+    """
+    try:
+        feedback_system = get_feedback_system()
+        status = feedback_system.get_validation_status(message_id)
+        
+        if status:
+            return {"success": True, **status}
+        return {
+            "success": False,
+            "error": "Message not found"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.delete("/api/chat/clear")
 async def clear_chat():

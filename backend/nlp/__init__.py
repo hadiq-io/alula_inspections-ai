@@ -25,6 +25,7 @@ from .kpi_library import KPILibrary
 from .ml_predictions_library import MLPredictionsLibrary
 from .chat_agent import InspectionChatAgent, InspectionChatAgentSync
 from .input_validator import InputValidator, ClarificationManager, get_validator, get_clarification_manager
+from .feedback_system import FeedbackSystem, ValidatedQuery, ValidationStatus, get_feedback_system
 
 __all__ = [
     'QueryParser',
@@ -39,5 +40,9 @@ __all__ = [
     'InputValidator',
     'ClarificationManager',
     'get_validator',
-    'get_clarification_manager'
+    'get_clarification_manager',
+    'FeedbackSystem',
+    'ValidatedQuery',
+    'ValidationStatus',
+    'get_feedback_system'
 ]

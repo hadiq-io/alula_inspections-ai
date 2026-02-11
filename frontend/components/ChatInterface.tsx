@@ -33,6 +33,9 @@ interface Message {
     title_ar?: string;
   };
   recommendations?: Recommendation[];
+  // Feedback system props
+  messageId?: string;
+  feedbackEnabled?: boolean;
 }
 
 function ChatInterfaceInner() {
@@ -104,7 +107,9 @@ function ChatInterfaceInner() {
             content_ar: data.response_ar || "",
             chartData: data.data,
             chartConfig: data.chart_config,
-            recommendations: data.recommendations
+            recommendations: data.recommendations,
+            messageId: data.message_id,
+            feedbackEnabled: data.feedback_enabled || !!data.message_id
           },
         ]);
       } else {
@@ -328,6 +333,27 @@ function ChatInterfaceInner() {
                           isRTL={isRTL}
                           recommendations={msg.recommendations}
                           onRecommendationClick={(text) => handleSend(text)}
+                          messageId={msg.messageId}
+                          feedbackEnabled={msg.feedbackEnabled}
+                          onClarificationRetry={(retryResponse) => {
+                            // Add the retry response as a new message
+                            setMessages((prev) => [
+                              ...prev,
+                              {
+                                role: "assistant",
+                                content: language === "ar" && retryResponse.response_ar 
+                                  ? retryResponse.response_ar 
+                                  : retryResponse.response,
+                                content_en: retryResponse.response_en || retryResponse.response || "",
+                                content_ar: retryResponse.response_ar || "",
+                                chartData: retryResponse.data,
+                                chartConfig: retryResponse.chart_config,
+                                recommendations: retryResponse.recommendations,
+                                messageId: retryResponse.message_id,
+                                feedbackEnabled: retryResponse.feedback_enabled || !!retryResponse.message_id
+                              }
+                            ]);
+                          }}
                         />
                       </motion.div>
                     ))}
