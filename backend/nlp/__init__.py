@@ -26,6 +26,7 @@ from .ml_predictions_library import MLPredictionsLibrary
 from .chat_agent import InspectionChatAgent, InspectionChatAgentSync
 from .input_validator import InputValidator, ClarificationManager, get_validator, get_clarification_manager
 from .feedback_system import FeedbackSystem, ValidatedQuery, ValidationStatus, get_feedback_system
+from .orchestrator import IntelligentOrchestrator, get_orchestrator
 
 __all__ = [
     'QueryParser',
@@ -44,5 +45,7 @@ __all__ = [
     'FeedbackSystem',
     'ValidatedQuery',
     'ValidationStatus',
-    'get_feedback_system'
+    'get_feedback_system',
+    'IntelligentOrchestrator',
+    'get_orchestrator'
 ]

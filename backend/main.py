@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 from database import Database
 
 # Import the new NLP chat agent and feedback system
-from nlp import InspectionChatAgent, InspectionChatAgentSync, get_feedback_system
+from nlp import InspectionChatAgent, InspectionChatAgentSync, get_feedback_system, get_orchestrator
 
 load_dotenv()
 app = FastAPI()
@@ -427,15 +427,104 @@ except Exception as e:
     print(f"⚠️ Bilingual agent init error: {e}")
     bilingual_agent = None
 
+# Initialize the Intelligent Orchestrator (Claude-first decision making)
+try:
+    intelligent_orchestrator = get_orchestrator()
+    print("✅ Intelligent Orchestrator initialized")
+except Exception as e:
+    print(f"⚠️ Orchestrator init error: {e}")
+    intelligent_orchestrator = None
+
 
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
 
+# Store session IDs for clarification tracking
+chat_sessions: Dict[str, str] = {}
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    """Main chat endpoint (original)"""
-    return agent.process_message(request.message)
+    """
+    Main chat endpoint - NOW POWERED BY INTELLIGENT ORCHESTRATOR
+    
+    The orchestrator uses Claude Sonnet 4.5 to:
+    1. Analyze and classify every question
+    2. Route to database queries when confident
+    3. Ask clarifying questions when ambiguous
+    4. Provide general answers when outside database scope
+    """
+    if intelligent_orchestrator:
+        # Use session tracking for clarification follow-ups
+        # For now, generate a new session per request (can be enhanced with cookies/headers)
+        import uuid
+        session_id = str(uuid.uuid4())
+        
+        result = intelligent_orchestrator.process(
+            message=request.message,
+            session_id=session_id,
+            language="en"
+        )
+        
+        # Format response for frontend compatibility
+        return {
+            "message": result.get("response", ""),
+            "chart_data": result.get("data"),
+            "chart_type": result.get("chart_config", {}).get("type") if result.get("chart_config") else None,
+            "chart_config": result.get("chart_config"),
+            "session_id": result.get("session_id"),
+            "route": result.get("route"),
+            "needs_clarification": result.get("needs_clarification", False),
+            "clarification_options": result.get("clarification_options", [])
+        }
+    else:
+        # Fallback to old agent if orchestrator failed to initialize
+        return agent.process_message(request.message)
+
+
+# New model for chat with session support
+class ChatWithSessionRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    language: str = "en"
+
+
+@app.post("/api/chat/session")
+async def chat_with_session(request: ChatWithSessionRequest):
+    """
+    Chat endpoint with session support for clarification follow-ups.
+    
+    Use this endpoint when you need to:
+    1. Continue a conversation after a clarification request
+    2. Track context across multiple messages
+    
+    The session_id from a previous response should be passed back
+    to continue the conversation.
+    """
+    if intelligent_orchestrator:
+        result = intelligent_orchestrator.process(
+            message=request.message,
+            session_id=request.session_id,
+            language=request.language
+        )
+        
+        return {
+            "message": result.get("response", ""),
+            "chart_data": result.get("data"),
+            "chart_type": result.get("chart_config", {}).get("type") if result.get("chart_config") else None,
+            "chart_config": result.get("chart_config"),
+            "session_id": result.get("session_id"),
+            "route": result.get("route"),
+            "needs_clarification": result.get("needs_clarification", False),
+            "clarification_options": result.get("clarification_options", []),
+            "intent": result.get("intent"),
+            "query_type": result.get("query_type")
+        }
+    else:
+        return {
+            "error": "Orchestrator not available",
+            "message": "The intelligent chat system is not configured."
+        }
 
 
 @app.post("/api/v2/chat")
