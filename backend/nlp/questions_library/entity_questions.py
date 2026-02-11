@@ -276,17 +276,16 @@ LOCATION_ENTITY_QUESTIONS = [
         keywords_ar=["موقع", "مخالفات"],
         sql="""
             SELECT 
-                vt.Name as violation_type,
+                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as violation_category,
                 COUNT(*) as occurrence_count,
-                SUM(ev.Value) as total_value,
+                SUM(ev.ViolationValue) as total_value,
                 MAX(e.SubmitionDate) as last_occurrence
-            FROM Location l
-            JOIN Event e ON e.LocationID = l.Id
+            FROM Locations l
+            JOIN Event e ON e.Location = l.Id
             JOIN EventViolation ev ON ev.EventId = e.Id
-            JOIN ViolationType vt ON ev.ViolationTypeId = vt.Id
             WHERE e.IsDeleted = 0
-              AND l.Name LIKE '%{location_name}%'
-            GROUP BY vt.Id, vt.Name
+              AND (l.Name LIKE '%{location_name}%' OR l.NameAr LIKE '%{location_name}%')
+            GROUP BY ev.QuestionSectionId
             ORDER BY occurrence_count DESC
         """,
         parameters={"location_name": str},
@@ -361,20 +360,18 @@ VIOLATION_ENTITY_QUESTIONS = [
         keywords_ar=["مخالفة", "نوع", "تفاصيل"],
         sql="""
             SELECT 
-                vt.Name as violation_type,
-                vt.NameAr as violation_type_ar,
-                vc.Name as category,
+                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as violation_category,
+                CASE WHEN ev.Severity IS NULL THEN 'Not Specified' ELSE CAST(ev.Severity AS VARCHAR) END as severity,
                 COUNT(ev.Id) as total_occurrences,
-                SUM(ev.Value) as total_value,
-                AVG(ev.Value) as avg_value,
+                SUM(ev.ViolationValue) as total_value,
+                AVG(CAST(ev.ViolationValue AS FLOAT)) as avg_value,
                 MIN(e.SubmitionDate) as first_occurrence,
                 MAX(e.SubmitionDate) as last_occurrence
-            FROM ViolationType vt
-            JOIN ViolationCategory vc ON vt.ViolationCategoryId = vc.Id
-            LEFT JOIN EventViolation ev ON ev.ViolationTypeId = vt.Id
-            LEFT JOIN Event e ON ev.EventId = e.Id AND e.IsDeleted = 0
-            WHERE vt.Name LIKE '%{violation_type}%'
-            GROUP BY vt.Id, vt.Name, vt.NameAr, vc.Name
+            FROM EventViolation ev
+            JOIN Event e ON ev.EventId = e.Id AND e.IsDeleted = 0
+            WHERE ev.QuestionSectionId IS NOT NULL
+            GROUP BY ev.QuestionSectionId, ev.Severity
+            ORDER BY total_occurrences DESC
         """,
         parameters={"violation_type": str},
         default_values={"violation_type": ""},

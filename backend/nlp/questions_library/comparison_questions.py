@@ -479,18 +479,15 @@ CATEGORY_COMPARISON_QUESTIONS = [
         keywords_ar=["قارن", "مخالفات", "فئات", "أنواع"],
         sql="""
             SELECT 
-                vc.Name as category,
-                vc.NameAr as category_ar,
+                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as category,
                 COUNT(*) as violation_count,
-                SUM(ev.Value) as total_value,
-                AVG(ev.Value) as avg_value
-            FROM ViolationCategory vc
-            JOIN ViolationType vt ON vt.ViolationCategoryId = vc.Id
-            JOIN EventViolation ev ON ev.ViolationTypeId = vt.Id
+                SUM(ev.ViolationValue) as total_value,
+                AVG(CAST(ev.ViolationValue AS FLOAT)) as avg_value
+            FROM EventViolation ev
             JOIN Event e ON ev.EventId = e.Id
             WHERE e.IsDeleted = 0
               AND YEAR(e.SubmitionDate) = {year}
-            GROUP BY vc.Id, vc.Name, vc.NameAr
+            GROUP BY ev.QuestionSectionId
             ORDER BY violation_count DESC
         """,
         parameters={"year": int},

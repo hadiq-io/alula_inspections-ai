@@ -355,17 +355,15 @@ RANKING_QUESTIONS = [
         keywords_ar=["مخالفات", "قيمة", "أعلى", "مالية"],
         sql="""
             SELECT TOP 10
-                vt.Name as violation_type,
-                vt.NameAr as violation_type_ar,
+                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as violation_category,
                 COUNT(*) as occurrence_count,
-                SUM(ev.Value) as total_value,
-                AVG(ev.Value) as avg_value
-            FROM ViolationType vt
-            JOIN EventViolation ev ON ev.ViolationTypeId = vt.Id
+                SUM(ev.ViolationValue) as total_value,
+                AVG(CAST(ev.ViolationValue AS FLOAT)) as avg_value
+            FROM EventViolation ev
             JOIN Event e ON ev.EventId = e.Id
             WHERE e.IsDeleted = 0
               AND YEAR(e.SubmitionDate) = {year}
-            GROUP BY vt.Id, vt.Name, vt.NameAr
+            GROUP BY ev.QuestionSectionId
             ORDER BY total_value DESC
         """,
         parameters={"year": int},
@@ -489,18 +487,15 @@ DISTRIBUTION_QUESTIONS = [
         keywords_ar=["توزيع", "مخالفات", "فئة", "نوع"],
         sql="""
             SELECT 
-                vc.Name as category,
-                vc.NameAr as category_ar,
+                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as category,
                 COUNT(*) as violation_count,
                 CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS DECIMAL(5,2)) as percentage,
-                SUM(ev.Value) as total_value
-            FROM ViolationCategory vc
-            JOIN ViolationType vt ON vt.ViolationCategoryId = vc.Id
-            JOIN EventViolation ev ON ev.ViolationTypeId = vt.Id
+                SUM(ev.ViolationValue) as total_value
+            FROM EventViolation ev
             JOIN Event e ON ev.EventId = e.Id
             WHERE e.IsDeleted = 0
               AND YEAR(e.SubmitionDate) = {year}
-            GROUP BY vc.Id, vc.Name, vc.NameAr
+            GROUP BY ev.QuestionSectionId
             ORDER BY violation_count DESC
         """,
         parameters={"year": int},
