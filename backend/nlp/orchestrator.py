@@ -90,11 +90,20 @@ Key columns:
 - Isdeleted: Soft delete flag (NOTE: lowercase 'd')
 - IsActive: Whether location is active
 
-**Reporter** (Inspectors table)
-Columns: Id, NameEn, NameAr, Email, Phone, IsActive
-- Id: Inspector ID (links to Event.ReporterID)
-- NameEn: Inspector name in English
-- NameAr: Inspector name in Arabic
+**EventStatus** (Status Lookup Table)
+Columns: Id, Name, NameAr, IsDeleted, IsActive, IsSystem, UpdateDate
+- Id: Status ID (links to Event.Status)
+- Name: Status name in Arabic/mixed
+- NameAr: Arabic name
+Key statuses: 1=اعتماد 1, 2=مغلقة (Closed), 3=اعتماد 2, 4=مرفوضة (Rejected), 5=مكتملة (Completed), 6=تحت الإجراء (In Progress), 9=تم انتهاء فترة الاعتراض
+
+**ML_Inspector_Performance** (Inspector Performance Metrics)
+Columns: inspector_id, total_inspections, avg_inspection_score, completion_rate, 
+         defect_detection_rate, resolution_rate, performance_score, actual_tier, 
+         actual_label, predicted_tier, predicted_label, prediction_confidence
+- Use this for inspector rankings and performance queries
+- actual_label/predicted_label: 'Excellent', 'Good', 'Average', 'Needs Improvement'
+- performance_score: 0-100 scale
 
 **EventType** (Inspection Types)
 Columns: Id, NameEn, NameAr
@@ -105,13 +114,16 @@ Columns: Id, NameEn, NameAr
 2. Use 'Isdeleted = 0' for Locations table (lowercase d)
 3. The Locations table has 'LocationType' as a STRING column (not foreign key)
 4. Join Event to Locations using: Event.Location = Locations.Id
-5. Join Event to Reporter using: Event.ReporterID = Reporter.Id
-6. Date column is 'SubmitionDate' (note the typo - not 'SubmissionDate')
-7. Use TOP instead of LIMIT for SQL Server
-8. For years, use: YEAR(SubmitionDate) = 2025
+5. **NO Reporter table exists!** Use Event.ReporterID directly (numeric IDs only)
+6. For inspector names/performance, use ML_Inspector_Performance table
+7. Date column is 'SubmitionDate' (note the typo - not 'SubmissionDate')
+8. Use TOP instead of LIMIT for SQL Server
+9. For years, use: YEAR(SubmitionDate) = 2025
+10. Join Event.Status to EventStatus.Id for status names
 
 **EventStatus** (Status Lookup)
-- Id, Status: Status values
+Columns: Id, Name, NameAr
+- Join: Event.Status = EventStatus.Id
 
 ### ML Prediction Tables (9 models):
 - ML_Predictions: KPI forecasts (kpi_id, date, predicted_value)
@@ -127,7 +139,7 @@ Columns: Id, NameEn, NameAr
 ### Data Availability:
 - Years with data: 2022, 2023, 2024, 2025
 - All months available
-- ~50+ unique inspectors (ReporterID)
+- ~512 unique inspectors (ReporterID)
 - ~8,000 business locations
 - Activity types: Restaurant, Shop, Hotel, Cafe, Supermarket, etc.
 
