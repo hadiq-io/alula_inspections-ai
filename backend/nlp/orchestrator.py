@@ -53,41 +53,62 @@ class IntelligentOrchestrator:
 ### Core Tables:
 
 **Event** (Inspections table - ~243,000 records)
-- Id: Unique inspection ID
-- SubmitionDate: When inspection was submitted (data from 2022-2025)
+Columns: Id, Duration, ActivityId, EventType, formId, ReporterID, TenantId, Location, 
+         AssignTo, AssignToUnit, Notes, Status, Points, IsDeleted, SubmitionDate, 
+         LastUpdateDate, AssignedToSubunitId, ResponsibleUnit, IssueCount, Score, 
+         CriticalIssueCount, WorkflowId, long, lat, AssignToRole, SolvedIssues, AssetId
+Key columns:
+- Id: Unique inspection ID (int)
+- SubmitionDate: When inspection was submitted (datetime, data from 2022-2025)
 - Score: Compliance score (0-100)
-- Status: Current status (numeric)
-- ReporterID: Inspector who conducted it (numeric ID)
+- Status: Current status (numeric: 1,2,3,5,9,10, etc.)
+- ReporterID: Inspector who conducted it (numeric ID, links to Reporter table)
 - Duration: Time spent (minutes)
 - CriticalIssueCount: Number of critical issues found
-- EventStatusLookupId: Status reference
-- EventTypeId: Type of inspection
-- LocationId: Which business was inspected
-- IsDeleted: Soft delete flag (0 = active)
+- Location: Location ID (int, links to Locations.Id)
+- IsDeleted: Soft delete flag (0 = active, 1 = deleted)
 
 **EventViolation** (Violations table - ~36,000 records)
+Columns: Id, EventId, ViolationValue, Severity, HasObjection, ObjectionStatus, QuestionId, QuestionSectionId
 - Id: Violation ID
-- EventId: Links to Event table
-- ViolationValue: Fine amount in SAR
-- Severity: 1-5 scale (1=minor, 5=critical)
+- EventId: Links to Event.Id
+- ViolationValue: Fine amount in SAR (int)
+- Severity: Can be NULL, 0, or other values
 - HasObjection: Boolean (1=has objection)
-- ObjectionStatus: Appeal status
-- QuestionId: Which checklist question
-- QuestionSectionId: Section of checklist
 
 **Locations** (Businesses/Sites - ~8,000 records)
-- Id: Location ID
-- Name: Business name (English)
-- NameAr: Business name (Arabic)
-- Category: Business category
-- Latitude, Longitude: Geographic coordinates
-- IsDeleted: Soft delete flag
+Columns: Id, Name, NameAr, ShortCode, ImportanceLevel, Category, LocationType, 
+         Lat, Long, beaconName, IsActive, Isdeleted, ParentLocation, AccountId, 
+         SubCategory, LocationImage, Address, RedirectionMode, LandMark
+Key columns:
+- Id: Location ID (int)
+- Name: Business name (English, nvarchar)
+- NameAr: Business name (Arabic, nvarchar)
+- Category: Business category (nvarchar)
+- LocationType: Activity type classification (nvarchar, e.g., Restaurant, Shop, Hotel)
+- Lat, Long: Geographic coordinates (float)
+- Isdeleted: Soft delete flag (NOTE: lowercase 'd')
+- IsActive: Whether location is active
 
-**LocationType** (Activity/Business Types)
-- Id, Name, NameAr: Activity type classification (Restaurant, Shop, Hotel, etc.)
+**Reporter** (Inspectors table)
+Columns: Id, NameEn, NameAr, Email, Phone, IsActive
+- Id: Inspector ID (links to Event.ReporterID)
+- NameEn: Inspector name in English
+- NameAr: Inspector name in Arabic
 
 **EventType** (Inspection Types)
-- Id, NameEn, NameAr: Type of inspection
+Columns: Id, NameEn, NameAr
+- Links to Event.EventType
+
+### IMPORTANT SQL RULES:
+1. Use 'IsDeleted = 0' for Event table (capital D)
+2. Use 'Isdeleted = 0' for Locations table (lowercase d)
+3. The Locations table has 'LocationType' as a STRING column (not foreign key)
+4. Join Event to Locations using: Event.Location = Locations.Id
+5. Join Event to Reporter using: Event.ReporterID = Reporter.Id
+6. Date column is 'SubmitionDate' (note the typo - not 'SubmissionDate')
+7. Use TOP instead of LIMIT for SQL Server
+8. For years, use: YEAR(SubmitionDate) = 2025
 
 **EventStatus** (Status Lookup)
 - Id, Status: Status values

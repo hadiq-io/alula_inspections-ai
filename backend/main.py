@@ -530,8 +530,8 @@ async def chat_with_session(request: ChatWithSessionRequest):
 @app.post("/api/v2/chat")
 async def chat_v2(request: BilingualChatRequest):
     """
-    Bilingual chat endpoint (Phase 2).
-    Supports Arabic and English queries with inline charts.
+    Bilingual chat endpoint (Phase 2) - NOW USES INTELLIGENT ORCHESTRATOR.
+    Uses Claude-first decision making for intelligent routing.
     
     Request body:
     - message: User's question (Arabic or English)
@@ -539,31 +539,50 @@ async def chat_v2(request: BilingualChatRequest):
     - language: Response language preference ("en" or "ar")
     
     Response:
-    - response: Natural language response (English)
-    - response_ar: Arabic response
+    - response: Natural language response
+    - response_ar: Arabic response (if available)
     - data: Query result data
     - chart_config: Chart configuration for rendering
     - session_id: Session ID for follow-ups
+    - needs_clarification: Whether clarification is needed
+    - clarification_options: Options for user to choose
     """
-    if not bilingual_agent:
-        return {
-            "error": "Bilingual chat agent not available",
-            "response": "The bilingual chat system is not configured. Please check server logs.",
-            "response_ar": "نظام الدردشة ثنائي اللغة غير متاح. يرجى التحقق من سجلات الخادم."
-        }
-    
+    # Use the intelligent orchestrator
     try:
-        result = await bilingual_agent.process_query(
-            query=request.message,
+        orchestrator = get_orchestrator()
+        result = orchestrator.process(
+            message=request.message,
             session_id=request.session_id,
-            language=request.language
+            language=request.language or "en"
         )
-        return result
+        
+        # Map orchestrator response to v2 format
+        return {
+            "response": result.get("response", ""),
+            "response_ar": result.get("response_ar", ""),
+            "response_en": result.get("response", ""),
+            "data": result.get("data", []),
+            "chart_config": result.get("chart_config"),
+            "chart_data": result.get("data", []),
+            "chart_type": result.get("chart_config", {}).get("type") if result.get("chart_config") else None,
+            "session_id": result.get("session_id"),
+            "route": result.get("route"),
+            "needs_clarification": result.get("needs_clarification", False),
+            "clarification_options": result.get("clarification_options", []),
+            "type": result.get("type"),
+            "intent": result.get("intent"),
+            "query_type": result.get("query_type")
+        }
     except Exception as e:
+        print(f"❌ Orchestrator error in v2/chat: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "error": str(e),
             "response": f"An error occurred: {str(e)}",
-            "response_ar": f"حدث خطأ: {str(e)}"
+            "response_ar": f"حدث خطأ: {str(e)}",
+            "needs_clarification": False,
+            "clarification_options": []
         }
 
 
