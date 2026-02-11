@@ -355,7 +355,8 @@ RANKING_QUESTIONS = [
         keywords_ar=["مخالفات", "قيمة", "أعلى", "مالية"],
         sql="""
             SELECT TOP 10
-                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as violation_category,
+                COALESCE(ev.QuestionNameEn, 'Unspecified') as violation_type,
+                COALESCE(ev.QuestionNameAr, 'غير محدد') as violation_type_ar,
                 COUNT(*) as occurrence_count,
                 SUM(ev.ViolationValue) as total_value,
                 AVG(CAST(ev.ViolationValue AS FLOAT)) as avg_value
@@ -363,7 +364,7 @@ RANKING_QUESTIONS = [
             JOIN Event e ON ev.EventId = e.Id
             WHERE e.IsDeleted = 0
               AND YEAR(e.SubmitionDate) = {year}
-            GROUP BY ev.QuestionSectionId
+            GROUP BY ev.QuestionNameEn, ev.QuestionNameAr
             ORDER BY total_value DESC
         """,
         parameters={"year": int},
@@ -486,8 +487,9 @@ DISTRIBUTION_QUESTIONS = [
         keywords_en=["distribution", "violations", "category", "type", "breakdown"],
         keywords_ar=["توزيع", "مخالفات", "فئة", "نوع"],
         sql="""
-            SELECT 
-                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as category,
+            SELECT TOP 20
+                COALESCE(ev.QuestionNameEn, 'Unspecified') as category,
+                COALESCE(ev.QuestionNameAr, 'غير محدد') as category_ar,
                 COUNT(*) as violation_count,
                 CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS DECIMAL(5,2)) as percentage,
                 SUM(ev.ViolationValue) as total_value
@@ -495,7 +497,7 @@ DISTRIBUTION_QUESTIONS = [
             JOIN Event e ON ev.EventId = e.Id
             WHERE e.IsDeleted = 0
               AND YEAR(e.SubmitionDate) = {year}
-            GROUP BY ev.QuestionSectionId
+            GROUP BY ev.QuestionNameEn, ev.QuestionNameAr
             ORDER BY violation_count DESC
         """,
         parameters={"year": int},

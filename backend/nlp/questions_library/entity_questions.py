@@ -276,7 +276,8 @@ LOCATION_ENTITY_QUESTIONS = [
         keywords_ar=["موقع", "مخالفات"],
         sql="""
             SELECT 
-                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as violation_category,
+                COALESCE(ev.QuestionNameEn, 'Unspecified') as violation_type,
+                COALESCE(ev.QuestionNameAr, 'غير محدد') as violation_type_ar,
                 COUNT(*) as occurrence_count,
                 SUM(ev.ViolationValue) as total_value,
                 MAX(e.SubmitionDate) as last_occurrence
@@ -285,7 +286,7 @@ LOCATION_ENTITY_QUESTIONS = [
             JOIN EventViolation ev ON ev.EventId = e.Id
             WHERE e.IsDeleted = 0
               AND (l.Name LIKE '%{location_name}%' OR l.NameAr LIKE '%{location_name}%')
-            GROUP BY ev.QuestionSectionId
+            GROUP BY ev.QuestionNameEn, ev.QuestionNameAr
             ORDER BY occurrence_count DESC
         """,
         parameters={"location_name": str},
@@ -359,8 +360,9 @@ VIOLATION_ENTITY_QUESTIONS = [
         keywords_en=["violation", "type", "details", "about", "what"],
         keywords_ar=["مخالفة", "نوع", "تفاصيل"],
         sql="""
-            SELECT 
-                COALESCE(CAST(ev.QuestionSectionId AS VARCHAR), 'Unspecified') as violation_category,
+            SELECT TOP 20
+                COALESCE(ev.QuestionNameEn, 'Unspecified') as violation_type,
+                COALESCE(ev.QuestionNameAr, 'غير محدد') as violation_type_ar,
                 CASE WHEN ev.Severity IS NULL THEN 'Not Specified' ELSE CAST(ev.Severity AS VARCHAR) END as severity,
                 COUNT(ev.Id) as total_occurrences,
                 SUM(ev.ViolationValue) as total_value,
@@ -369,8 +371,8 @@ VIOLATION_ENTITY_QUESTIONS = [
                 MAX(e.SubmitionDate) as last_occurrence
             FROM EventViolation ev
             JOIN Event e ON ev.EventId = e.Id AND e.IsDeleted = 0
-            WHERE ev.QuestionSectionId IS NOT NULL
-            GROUP BY ev.QuestionSectionId, ev.Severity
+            WHERE ev.QuestionNameEn IS NOT NULL
+            GROUP BY ev.QuestionNameEn, ev.QuestionNameAr, ev.Severity
             ORDER BY total_occurrences DESC
         """,
         parameters={"violation_type": str},

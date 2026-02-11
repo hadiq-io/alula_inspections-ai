@@ -69,12 +69,18 @@ Key columns:
 - IsDeleted: Soft delete flag (0 = active, 1 = deleted)
 
 **EventViolation** (Violations table - ~36,000 records)
-Columns: Id, EventId, ViolationValue, Severity, HasObjection, ObjectionStatus, QuestionId, QuestionSectionId
-- Id: Violation ID
+Columns: Id, EventId, QuestionId, ViolationValue, NonFinancialViolationsTypeId, PeriodValue, 
+         HasObjection, ObjectionStatus, OldViolationValue, Severity, QuestionNameEn, QuestionNameAr,
+         CreatedBy, CreatedAt, UpdatedBy, UpdatedAt, EditReason, EditAttachmentPath
+- Id: Violation ID (GUID)
 - EventId: Links to Event.Id
 - ViolationValue: Fine amount in SAR (int)
 - Severity: Can be NULL, 0, or other values
 - HasObjection: Boolean (1=has objection)
+- QuestionId: The question/violation type ID (int)
+- QuestionNameEn: Violation type name in English
+- QuestionNameAr: Violation type name in Arabic
+- NOTE: Use QuestionNameEn or QuestionNameAr to group violations by "type"
 
 **Locations** (Businesses/Sites - ~8,000 records)
 Columns: Id, Name, NameAr, ShortCode, ImportanceLevel, Category, LocationType, 
@@ -150,9 +156,9 @@ Columns: Id, Name, NameAr
 - Financial data beyond violation fines
 - Geographic neighborhoods (only individual business locations)
 - Customer reviews or ratings
-- **NO ViolationType or ViolationCategory lookup table** - violations only have QuestionSectionId (numeric)
+- **NO ViolationType or ViolationCategory lookup table** - use EventViolation.QuestionNameEn/QuestionNameAr
 - **NO ActivityType lookup table** - Locations.LocationType is numeric only
-- **NO Question or QuestionSection lookup tables** - only numeric IDs exist
+- **NO QuestionSectionId column** - use QuestionId, QuestionNameEn, QuestionNameAr instead
 
 ### COMMON SQL PATTERNS:
 
@@ -376,15 +382,16 @@ GROUP BY Severity
 ORDER BY Severity
 ```
 
-### Violations by Category (QuestionSectionId - this is the ONLY way to group violations by "type"):
+### Violations by Category (QuestionNameEn - this is how to group violations by "type"):
 ```sql
-SELECT 
-    COALESCE(CAST(QuestionSectionId AS VARCHAR), 'Unspecified') as ViolationCategory,
+SELECT TOP 20
+    COALESCE(QuestionNameEn, 'Unspecified') as ViolationType,
+    COALESCE(QuestionNameAr, 'غير محدد') as ViolationTypeAr,
     COUNT(*) as ViolationCount, 
     SUM(ViolationValue) as TotalFines,
     CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS DECIMAL(5,2)) as Percentage
 FROM EventViolation
-GROUP BY QuestionSectionId
+GROUP BY QuestionNameEn, QuestionNameAr
 ORDER BY ViolationCount DESC
 ```
 
