@@ -55,6 +55,78 @@ class FeedbackClarifyRequest(BaseModel):
 class InspectionAgent:
     """Intelligent AI Agent for AlUla Inspection Analytics"""
     
+    # Domain keywords - query MUST contain at least one to be considered relevant
+    DOMAIN_KEYWORDS = {
+        'inspection', 'inspections', 'inspect', 'inspector', 'inspectors',
+        'violation', 'violations', 'violate', 'violator',
+        'compliance', 'compliant', 'non-compliant', 'noncompliant',
+        'event', 'events',
+        'location', 'locations', 'place', 'places', 'business', 'businesses', 'site', 'sites',
+        'activity', 'activities',
+        'score', 'scores', 'rating', 'ratings',
+        'status', 'statuses',
+        'category', 'categories', 'type', 'types',
+        'kpi', 'kpis', 'metric', 'metrics', 'performance',
+        'report', 'reports', 'reporting',
+        'alula', 'العلا',
+        'municipal', 'municipality',
+        'check', 'checks', 'audit', 'audits',
+        'fine', 'fines', 'penalty', 'penalties',
+        'health', 'safety', 'hygiene', 'sanitation',
+        'restaurant', 'restaurants', 'shop', 'shops', 'store', 'stores',
+        'food', 'foods',
+        'closed', 'open', 'pending', 'completed',
+        'trend', 'trends', 'forecast', 'predict', 'prediction', 'predictions',
+        'compare', 'comparison', 'comparisons',
+        'top', 'best', 'worst', 'highest', 'lowest',
+        'count', 'total', 'average', 'sum', 'mean',
+        'monthly', 'yearly', 'quarterly', 'daily', 'weekly',
+        'data', 'statistics', 'stats', 'analysis', 'analyze', 'analytics',
+        'show', 'list', 'display', 'get', 'find', 'how many', 'what', 'risk', 'model', 'ml',
+        # Arabic inspection-related terms
+        'تفتيش', 'فحص', 'فحوصات', 'تفتيشات',
+        'مفتش', 'مفتشين', 'المفتش', 'المفتشين',
+        'مخالفة', 'مخالفات', 'المخالفة', 'المخالفات',
+        'امتثال', 'الامتثال', 'ملتزم', 'غير ملتزم',
+        'موقع', 'مواقع', 'الموقع', 'المواقع', 'مكان', 'أماكن',
+        'نشاط', 'أنشطة', 'النشاط', 'الأنشطة',
+        'حالة', 'الحالة', 'الوضع',
+        'فئة', 'فئات', 'نوع', 'أنواع',
+        'تقرير', 'تقارير', 'التقرير', 'التقارير',
+        'أداء', 'الأداء', 'كفاءة',
+        'درجة', 'درجات', 'تقييم',
+        'غرامة', 'غرامات', 'عقوبة',
+        'صحة', 'سلامة', 'نظافة',
+        'مطعم', 'مطاعم', 'محل', 'محلات', 'متجر',
+        'بلدية', 'البلدية',
+        'مغلق', 'مفتوح', 'معلق', 'مكتمل',
+        'اتجاه', 'توقع', 'تنبؤ',
+        'مقارنة', 'قارن',
+        'إجمالي', 'متوسط', 'عدد', 'كم',
+        'شهري', 'سنوي', 'أسبوعي', 'يومي',
+        'بيانات', 'إحصائيات', 'تحليل',
+        'عرض', 'قائمة', 'أظهر', 'اعرض',
+    }
+    
+    OFF_TOPIC_RESPONSE = """I'm the **AlUla Inspection Assistant** 🏛️, and I specialize in helping you analyze inspection data, compliance metrics, and municipal inspection activities for AlUla.
+
+**I can help you with:**
+• 📊 **Inspections** - Status, counts, trends, and results
+• ⚠️ **Violations** - Types, severity, fines, and patterns
+• ✅ **Compliance** - Scores, rankings, and performance
+• 📍 **Locations** - Businesses, activities, and categories  
+• 👥 **Inspectors** - Performance, workload, and statistics
+• 🎯 **KPIs** - Key performance indicators and metrics
+• 🔮 **Predictions** - ML forecasts and trend analysis
+
+**Try asking:**
+- "How many inspections were completed this month?"
+- "Show me the top violations by category"
+- "What's the compliance score trend?"
+- "Which locations have the highest risk?"
+
+Please ask me something about the AlUla inspection system!"""
+    
     def __init__(self):
         self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         self.api_key = os.getenv("AZURE_OPENAI_KEY")
@@ -239,11 +311,32 @@ You are helping inspection teams, managers, and analysts at AlUla understand the
         
         # Everything else goes to the AI for intelligent handling
         return "ai_chat"
+    
+    def _is_off_topic(self, message: str) -> bool:
+        """Check if the query is completely off-topic (has NO relevance to inspections)"""
+        msg_lower = message.lower().strip()
+        
+        # Check if ANY domain keyword is present
+        for keyword in self.DOMAIN_KEYWORDS:
+            if keyword.lower() in msg_lower:
+                return False  # Found a domain keyword - NOT off-topic
+        
+        # No domain keywords found - this is off-topic
+        print(f"⚠️ Off-topic query detected: '{message}'")
+        return True
 
     def process_message(self, user_message: str) -> Dict[str, Any]:
         """Main entry point - process user message and return response"""
         print(f"\n{'='*60}")
         print(f"📨 USER: {user_message}")
+        
+        # FIRST: Check if query is completely off-topic
+        if self._is_off_topic(user_message):
+            return {
+                "message": self.OFF_TOPIC_RESPONSE,
+                "chart_data": None,
+                "chart_type": None
+            }
         
         intent = self.detect_intent(user_message)
         print(f"🎯 INTENT: {intent}")
