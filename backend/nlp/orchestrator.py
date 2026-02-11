@@ -558,6 +558,23 @@ Generate a helpful, informative response.
         # Re-process with enhanced context
         return self.process(enhanced_message, session_id, language)
 
+    def _clean_data_for_json(self, data: List[Dict]) -> List[Dict]:
+        """Clean data for JSON serialization by replacing NaN/None values."""
+        import math
+        cleaned = []
+        for row in data:
+            clean_row = {}
+            for key, value in row.items():
+                # Handle NaN, None, and infinity
+                if value is None:
+                    clean_row[key] = None
+                elif isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    clean_row[key] = None
+                else:
+                    clean_row[key] = value
+            cleaned.append(clean_row)
+        return cleaned
+
     def _handle_database_query(
         self,
         session_id: str,
@@ -591,7 +608,9 @@ Generate a helpful, informative response.
             df = db.execute_query(sql)
             
             if df is not None and not df.empty:
-                data = df.to_dict(orient='records')
+                # Convert to dict and clean NaN values for JSON serialization
+                raw_data = df.to_dict(orient='records')
+                data = self._clean_data_for_json(raw_data)
                 print(f"✅ Query returned {len(data)} rows")
             else:
                 print(f"⚠️ Query returned no data")
