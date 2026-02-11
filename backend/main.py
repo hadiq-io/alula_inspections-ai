@@ -56,33 +56,38 @@ class InspectionAgent:
     """Intelligent AI Agent for AlUla Inspection Analytics"""
     
     # Domain keywords - query MUST contain at least one to be considered relevant
+    # NOTE: Do NOT include generic words like "what", "show", "how" - they appear in off-topic queries
     DOMAIN_KEYWORDS = {
+        # Core inspection terms (English)
         'inspection', 'inspections', 'inspect', 'inspector', 'inspectors',
         'violation', 'violations', 'violate', 'violator',
         'compliance', 'compliant', 'non-compliant', 'noncompliant',
         'event', 'events',
-        'location', 'locations', 'place', 'places', 'business', 'businesses', 'site', 'sites',
+        # Location/business terms
+        'location', 'locations', 'business', 'businesses', 'site', 'sites', 'establishment',
         'activity', 'activities',
+        # Metrics terms
         'score', 'scores', 'rating', 'ratings',
         'status', 'statuses',
-        'category', 'categories', 'type', 'types',
+        'category', 'categories',
         'kpi', 'kpis', 'metric', 'metrics', 'performance',
         'report', 'reports', 'reporting',
+        # Domain-specific
         'alula', 'العلا',
         'municipal', 'municipality',
-        'check', 'checks', 'audit', 'audits',
+        'audit', 'audits',
         'fine', 'fines', 'penalty', 'penalties',
-        'health', 'safety', 'hygiene', 'sanitation',
+        'hygiene', 'sanitation',
         'restaurant', 'restaurants', 'shop', 'shops', 'store', 'stores',
-        'food', 'foods',
-        'closed', 'open', 'pending', 'completed',
-        'trend', 'trends', 'forecast', 'predict', 'prediction', 'predictions',
-        'compare', 'comparison', 'comparisons',
-        'top', 'best', 'worst', 'highest', 'lowest',
-        'count', 'total', 'average', 'sum', 'mean',
+        # Status terms
+        'closed', 'pending', 'completed',
+        # Analysis terms
+        'trend', 'trends', 'forecast', 'prediction', 'predictions',
+        'comparison', 'comparisons',
+        'highest', 'lowest',
         'monthly', 'yearly', 'quarterly', 'daily', 'weekly',
-        'data', 'statistics', 'stats', 'analysis', 'analyze', 'analytics',
-        'show', 'list', 'display', 'get', 'find', 'how many', 'what', 'risk', 'model', 'ml',
+        'statistics', 'stats', 'analytics',
+        'risk', 'model', 'ml',
         # Arabic inspection-related terms
         'تفتيش', 'فحص', 'فحوصات', 'تفتيشات',
         'مفتش', 'مفتشين', 'المفتش', 'المفتشين',
@@ -105,7 +110,6 @@ class InspectionAgent:
         'إجمالي', 'متوسط', 'عدد', 'كم',
         'شهري', 'سنوي', 'أسبوعي', 'يومي',
         'بيانات', 'إحصائيات', 'تحليل',
-        'عرض', 'قائمة', 'أظهر', 'اعرض',
     }
     
     OFF_TOPIC_RESPONSE = """I'm the **AlUla Inspection Assistant** 🏛️, and I specialize in helping you analyze inspection data, compliance metrics, and municipal inspection activities for AlUla.
