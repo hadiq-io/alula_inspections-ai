@@ -376,6 +376,18 @@ GROUP BY Severity
 ORDER BY Severity
 ```
 
+### Violations by Category (QuestionSectionId - this is the ONLY way to group violations by "type"):
+```sql
+SELECT 
+    COALESCE(CAST(QuestionSectionId AS VARCHAR), 'Unspecified') as ViolationCategory,
+    COUNT(*) as ViolationCount, 
+    SUM(ViolationValue) as TotalFines,
+    CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS DECIMAL(5,2)) as Percentage
+FROM EventViolation
+GROUP BY QuestionSectionId
+ORDER BY ViolationCount DESC
+```
+
 ### Top Inspectors:
 ```sql
 SELECT TOP 10 ReporterID as InspectorID, COUNT(*) as InspectionCount
@@ -389,9 +401,27 @@ ORDER BY COUNT(*) DESC
 ```sql
 SELECT TOP 100 Id, Name, NameAr, Category
 FROM Locations
-WHERE IsDeleted = 0
+WHERE Isdeleted = 0
 ORDER BY Name
 ```
+
+### Inspections by Business Type (Restaurants, Hotels, etc. - search by Name):
+```sql
+SELECT 
+    l.Name as BusinessName, 
+    l.NameAr as BusinessNameAr,
+    COUNT(e.Id) as InspectionCount,
+    AVG(e.Score) as AvgComplianceScore,
+    SUM(CASE WHEN ev.Id IS NOT NULL THEN 1 ELSE 0 END) as ViolationCount
+FROM Locations l
+JOIN Event e ON e.Location = l.Id
+LEFT JOIN EventViolation ev ON ev.EventId = e.Id
+WHERE e.IsDeleted = 0 AND l.Isdeleted = 0
+  AND (l.Name LIKE '%restaurant%' OR l.Name LIKE '%مطعم%' OR l.NameAr LIKE '%مطعم%')
+GROUP BY l.Id, l.Name, l.NameAr
+ORDER BY InspectionCount DESC
+```
+-- NOTE: For other business types, change the LIKE pattern to match the type name
 
 ### Daily Inspection Trend:
 ```sql
