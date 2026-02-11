@@ -216,12 +216,21 @@ registry = QuestionsRegistry()
 # Import and register all question categories
 def initialize_library():
     """Initialize the questions library by loading all categories."""
+    # Original question modules (104 templates)
     from . import kpi_questions
     from . import analytics_questions
     from . import prediction_questions
     from . import comparison_questions
     from . import temporal_questions
     from . import entity_questions
+    
+    # Extended question modules (300 additional templates)
+    from . import extended_kpi_questions
+    from . import extended_analytics_questions
+    from . import extended_prediction_questions
+    from . import extended_entity_questions
+    from . import extended_comparison_questions
+    from . import extended_temporal_questions
     
     # Each module registers its templates on import
     print(f"Questions Library initialized: {registry.get_stats()}")
