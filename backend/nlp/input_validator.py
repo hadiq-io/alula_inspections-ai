@@ -119,6 +119,97 @@ class InputValidator:
         'old town': "I don't have 'Old Town' as a specific filter. Would you like to:\n1. Search for locations with 'Old' in the name?\n2. See all **location categories**?\n3. View the **location list**?",
     }
     
+    # Domain keywords - query MUST contain at least one to be considered relevant
+    # If none of these are found, the query is completely off-topic
+    DOMAIN_KEYWORDS = {
+        # English inspection-related terms
+        'inspection', 'inspections', 'inspect', 'inspector', 'inspectors',
+        'violation', 'violations', 'violate', 'violator',
+        'compliance', 'compliant', 'non-compliant', 'noncompliant',
+        'event', 'events',
+        'location', 'locations', 'place', 'places', 'business', 'businesses', 'site', 'sites',
+        'activity', 'activities',
+        'score', 'scores', 'rating', 'ratings',
+        'status', 'statuses',
+        'category', 'categories', 'type', 'types',
+        'kpi', 'kpis', 'metric', 'metrics', 'performance',
+        'report', 'reports', 'reporting',
+        'alula', 'العلا',
+        'municipal', 'municipality',
+        'check', 'checks', 'audit', 'audits',
+        'fine', 'fines', 'penalty', 'penalties',
+        'health', 'safety', 'hygiene', 'sanitation',
+        'restaurant', 'restaurants', 'shop', 'shops', 'store', 'stores',
+        'food', 'foods',
+        'closed', 'open', 'pending', 'completed',
+        'trend', 'trends', 'forecast', 'predict', 'prediction', 'predictions',
+        'compare', 'comparison', 'comparisons',
+        'top', 'best', 'worst', 'highest', 'lowest',
+        'count', 'total', 'average', 'sum', 'mean',
+        'monthly', 'yearly', 'quarterly', 'daily', 'weekly',
+        'data', 'statistics', 'stats', 'analysis', 'analyze',
+        'show', 'list', 'display', 'get', 'find', 'how many', 'what',
+        # Arabic inspection-related terms
+        'تفتيش', 'فحص', 'فحوصات', 'تفتيشات',
+        'مفتش', 'مفتشين', 'المفتش', 'المفتشين',
+        'مخالفة', 'مخالفات', 'المخالفة', 'المخالفات',
+        'امتثال', 'الامتثال', 'ملتزم', 'غير ملتزم',
+        'موقع', 'مواقع', 'الموقع', 'المواقع', 'مكان', 'أماكن',
+        'نشاط', 'أنشطة', 'النشاط', 'الأنشطة',
+        'حالة', 'الحالة', 'الوضع',
+        'فئة', 'فئات', 'نوع', 'أنواع',
+        'تقرير', 'تقارير', 'التقرير', 'التقارير',
+        'أداء', 'الأداء', 'كفاءة',
+        'درجة', 'درجات', 'تقييم',
+        'غرامة', 'غرامات', 'عقوبة',
+        'صحة', 'سلامة', 'نظافة',
+        'مطعم', 'مطاعم', 'محل', 'محلات', 'متجر',
+        'بلدية', 'البلدية',
+        'مغلق', 'مفتوح', 'معلق', 'مكتمل',
+        'اتجاه', 'توقع', 'تنبؤ',
+        'مقارنة', 'قارن',
+        'إجمالي', 'متوسط', 'عدد', 'كم',
+        'شهري', 'سنوي', 'أسبوعي', 'يومي',
+        'بيانات', 'إحصائيات', 'تحليل',
+        'عرض', 'قائمة', 'أظهر', 'اعرض',
+    }
+    
+    # Off-topic response message
+    OFF_TOPIC_RESPONSE_EN = """I'm the AlUla Inspection Assistant, and I can only help with questions about:
+
+• **Inspections** - status, counts, trends, and results
+• **Violations** - types, severity, fines, and trends
+• **Compliance** - scores, rankings, and performance
+• **Locations** - businesses, activities, and categories
+• **Inspectors** - performance, workload, and statistics
+• **KPIs** - key performance indicators and metrics
+• **Predictions** - forecasts and trend analysis
+
+Please ask me something about the AlUla inspection system!
+
+Examples:
+- "How many inspections were completed this month?"
+- "Show me the top violations by category"
+- "What is the compliance score trend?"
+- "كم عدد التفتيشات هذا الشهر؟" """
+
+    OFF_TOPIC_RESPONSE_AR = """أنا مساعد نظام التفتيش في العلا، ويمكنني فقط المساعدة في الأسئلة حول:
+
+• **التفتيشات** - الحالة والأعداد والاتجاهات والنتائج
+• **المخالفات** - الأنواع والخطورة والغرامات والاتجاهات
+• **الامتثال** - الدرجات والتصنيفات والأداء
+• **المواقع** - الأعمال والأنشطة والفئات
+• **المفتشين** - الأداء وحجم العمل والإحصائيات
+• **مؤشرات الأداء** - مؤشرات الأداء الرئيسية والمقاييس
+• **التوقعات** - التنبؤات وتحليل الاتجاهات
+
+يرجى سؤالي عن نظام التفتيش في العلا!
+
+أمثلة:
+- "كم عدد التفتيشات المكتملة هذا الشهر؟"
+- "أظهر لي أعلى المخالفات حسب الفئة"
+- "ما هو اتجاه درجة الامتثال؟" """
+
     def __init__(self):
         """Initialize the validator with database connection"""
         self.db_server = os.getenv("DB_SERVER", "20.3.236.169")
@@ -211,6 +302,28 @@ class InputValidator:
             print(f"❌ Error loading validator cache: {e}")
             self._cache_loaded = False
     
+    def _is_off_topic(self, user_input: str) -> bool:
+        """
+        Check if the query is completely off-topic (has NO relevance to inspections).
+        
+        Returns:
+            True if the query has zero domain relevance and should be rejected
+        """
+        input_lower = user_input.lower().strip()
+        
+        # Check if ANY domain keyword is present
+        for keyword in self.DOMAIN_KEYWORDS:
+            if keyword.lower() in input_lower:
+                return False  # Found a domain keyword - NOT off-topic
+        
+        # No domain keywords found - this is off-topic
+        return True
+    
+    def _detect_language(self, text: str) -> str:
+        """Detect if text is primarily Arabic or English"""
+        arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+        return 'ar' if arabic_chars > len(text) * 0.2 else 'en'
+    
     def validate(self, user_input: str, parsed_intent: Dict[str, Any] = None) -> ValidationResult:
         """
         Validate user input and determine if clarification is needed.
@@ -229,6 +342,29 @@ class InputValidator:
         unmatched_terms = []
         matched_entities = {}
         confidence = 1.0
+        
+        # Step 0: Check if query is COMPLETELY OFF-TOPIC (no domain keywords at all)
+        if self._is_off_topic(user_input):
+            detected_lang = self._detect_language(user_input)
+            off_topic_message = self.OFF_TOPIC_RESPONSE_AR if detected_lang == 'ar' else self.OFF_TOPIC_RESPONSE_EN
+            
+            print(f"⚠️ Off-topic query detected: '{user_input}'")
+            
+            return ValidationResult(
+                is_valid=False,
+                confidence=0.0,
+                interpretation={'original': user_input, 'off_topic': True},
+                needs_clarification=True,
+                clarification_question=off_topic_message,
+                clarification_options=[
+                    "Show inspection overview",
+                    "Show violation summary",
+                    "Show compliance trends",
+                    "List top locations"
+                ],
+                warnings=["Query does not appear to be related to inspections"],
+                unmatched_terms=['off_topic']
+            )
         
         # Step 1: Check for completely unknown concepts
         for unknown_term, clarification in self.UNKNOWN_CONCEPTS.items():
